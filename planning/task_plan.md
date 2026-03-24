@@ -53,17 +53,17 @@ a bounded result through the full authenticated path.
 **Steps:**
 - [x] Define ways of working and council structure
 - [x] Scaffold planning files
-- [ ] Confirm Docker Desktop with Kubernetes enabled (WSL2)
-- [ ] Write local Helm values file (`values.local.yaml`) — Hydra + MCP server + Presidio worker
-- [ ] Deploy Hydra locally via Helm — confirm token issuance and JWKS endpoint
-- [ ] Configure a test client (service account + client credentials) in Hydra
-- [ ] Confirm Presidio recognizer coverage against target data types (synthetic test)
+- [x] Confirm Docker Desktop with Kubernetes enabled (WSL2) — Docker Engine installed in WSL2 directly
+- [x] Write local Helm values file (`values.local.yaml`) — Hydra + MCP server + Presidio worker
+- [x] Deploy Hydra locally via Helm — confirm token issuance and JWKS endpoint
+- [x] Configure a test client (service account + client credentials) in Hydra
+- [x] Confirm Presidio recognizer coverage against target data types (synthetic test corpus — Lane C)
 - [ ] Produce architectural design document
-- [ ] Confirm tool schema — input and output contracts
-- [ ] Build minimal worker prototype (Helm chart, ephemeral worker, embedded Presidio)
-- [ ] Build synthetic test corpus
-- [ ] Wire MCP server to Hydra — validate 401/403/200 flows end-to-end
-- [ ] Confirm failure paths do not leak payload data
+- [x] Confirm tool schema — input and output contracts (spec §2.3–2.5, implemented in worker + MCP server)
+- [x] Build minimal worker prototype (Helm chart, ephemeral worker, embedded Presidio)
+- [x] Build synthetic test corpus (Lane C — 46 test cases, 8 files)
+- [ ] Wire MCP server to Hydra — validate 401/403/200 flows end-to-end (Lane D built, cluster recreation pending)
+- [ ] Confirm failure paths do not leak payload data (Lane D Security/Privacy Lead review pending)
 **Exit Criteria:**
 - Full local stack running via Helm (`helm install` or `helm upgrade`)
 - Test client can obtain a token from Hydra and invoke `classify_payload_sensitivity`
@@ -198,13 +198,21 @@ DELIVERABLES="$PROJECT_ROOT/deliverables"
 | 14 | Raw RecognizerResult objects stripped immediately in analyzer.py | RecognizerResult carries start/end offsets and matched text context. Propagating these to callers would violate the payload non-leakage contract. Only entity_type and score are forwarded. | `spec` §4.3 + `agent-reasoning` | 2026-03-24 |
 | 15 | OpenAPI docs UI disabled in production worker image | Reduces attack surface. docs_url, redoc_url, and openapi_url are set to None. Local environments can re-enable via env var if needed. | `agent-reasoning` + `spec` §4.3 | 2026-03-24 |
 | 16 | /tmp mounted as memory-backed emptyDir in Helm chart | Read-only root filesystem is required by security policy but uvicorn and spaCy need writable temporary storage. Memory-backed emptyDir satisfies both constraints without writing to the node's disk. | `spec` §4.3 + `agent-reasoning` | 2026-03-24 |
-| 17 | Worker service type set to ClusterIP | Worker must not be reachable from outside the cluster. ClusterIP ensures the worker is only addressable from within the cluster network. The MCP server is the only intended caller. | `spec` §4.3 + `agent-reasoning` | 2026-03-24 |
+| 17 | Worker service type set to ClusterIP in production values; NodePort in local values | Worker must not be reachable from outside the cluster in production. Local dev uses NodePort with kind extraPortMappings so services are reachable on fixed localhost ports without port-forwarding. Port-forward approach was replaced because it required manual restart on pod rollover. | `spec` §4.3 + `agent-reasoning` | 2026-03-24 |
+| 18 | kind cluster created with extraPortMappings for fixed localhost ports | Avoids kubectl port-forward in local dev. Ports 4444 (Hydra public), 4445 (Hydra admin), 8080 (worker) are mapped via kind containerPort→hostPort. ory/hydra chart does not support nodePort field — Hydra services are patched post-deploy in setup-local.sh. | `agent-reasoning` | 2026-03-24 |
+| 20 | MCP server uses the MCP Python SDK (`mcp`/`fastmcp`) not plain FastAPI | Full MCP protocol compliance from Phase 0. SDK handles tool registration, protocol framing, and message serialization. JWT middleware mounted on top of the SDK's FastAPI integration. | `user` | 2026-03-24 |
+| 21 | MCP server exposed on port 8000 (NodePort 30800) | Port 4444/4445/8080 already allocated. 8000 is the FastAPI/uvicorn convention and avoids conflict. kind-config.yaml and setup-local.sh updated. Cluster must be recreated to pick up the new extraPortMapping. | `user` | 2026-03-24 |
+| 22 | MCP server `/health` endpoint requires no auth | Kubernetes liveness/readiness probes cannot present Bearer tokens. Auth spec `tools:health.read` scope is a known deviation, documented as accepted for Phase 0. | `user` | 2026-03-24 |
+| 23 | Worker NodePort remains accessible in local dev after MCP server is deployed | Preserves demo.sh and direct debugging capability. Production topology uses ClusterIP so worker is unreachable externally regardless. | `user` | 2026-03-24 |
+| 19 | DATE_TIME mapped to direct_identifier (high severity) is too broad for MVP | Observed in Phase 0 demo: benign date references ("next month", "quarterly") trigger high severity and block. DATE_TIME alone without other context should not reach high severity. Severity mapping for DATE_TIME to be revisited in Phase 1 classification calibration once empirical data from real payloads is available. | `agent-reasoning` + `empirical` | 2026-03-24 |
 
 ---
 
 ## Errors Encountered
 | Error | Attempt # | Resolution |
 |-------|-----------|------------|
+| Helm ConfigMap rendered `maxPayloadBytes` as `1.048576e+06` (scientific notation) causing worker startup failure | 1 | Added `int` filter to configmap.yaml template: `{{ .Values.config.maxPayloadBytes \| int \| quote }}` |
+| `presidio_analyzer.__version__` does not exist — ImportError on worker startup | 1 | Replaced with `importlib.metadata.version('presidio-analyzer')` in minimizer.py |
 
 ---
 

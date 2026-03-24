@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from presidio_analyzer import __version__ as _presidio_version
+from importlib.metadata import version as _pkg_version
 
 from classification import (
     compute_severity_band,
@@ -29,7 +29,7 @@ from models import ConfidenceSummary, ScanResponse
 
 def _detector_version() -> str:
     """Return a stable detector version string for audit output."""
-    return f"presidio-{_presidio_version}"
+    return f"presidio-{_pkg_version('presidio-analyzer')}"
 
 
 def minimize(

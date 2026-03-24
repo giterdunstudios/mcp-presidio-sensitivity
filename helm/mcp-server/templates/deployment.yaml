@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-server.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "mcp-server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mcp-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mcp-server.selectorLabels" . | nindent 8 }}
+    spec:
+      # -----------------------------------------------------------------
+      # Pod security — non-root (uid 1001), no privilege escalation
+      # uid 1001 is distinct from the Presidio worker (uid 1000)
+      # -----------------------------------------------------------------
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      # No service account token auto-mount — MCP server has no K8s API access
+      automountServiceAccountToken: false
+
+      containers:
+        - name: mcp-server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          # -----------------------------------------------------------------
+          # Environment — sourced from ConfigMap only; no secrets here
+          # -----------------------------------------------------------------
+          envFrom:
+            - configMapRef:
+                name: {{ include "mcp-server.fullname" . }}-config
+
+          # -----------------------------------------------------------------
+          # Container security context
+          # -----------------------------------------------------------------
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+
+          # -----------------------------------------------------------------
+          # Resource limits — enforced by platform
+          # -----------------------------------------------------------------
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # -----------------------------------------------------------------
+          # Probes — /health requires no auth (decision #22)
+          # -----------------------------------------------------------------
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+
+          # -----------------------------------------------------------------
+          # Volume mounts
+          # Read-only root FS requires a writable /tmp for uvicorn
+          # -----------------------------------------------------------------
+          volumeMounts:
+            {{- if .Values.tmpVolume.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+
+      # -----------------------------------------------------------------
+      # Volumes
+      # -----------------------------------------------------------------
+      volumes:
+        {{- if .Values.tmpVolume.enabled }}
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.tmpVolume.sizeLimit }}
+        {{- end }}

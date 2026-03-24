@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# MCP Server — Local override values (Docker Desktop / kind / WSL2)
+#
+# Usage:
+#   helm upgrade --install mcp-server ./helm/mcp-server \
+#     -f ./helm/mcp-server/values.yaml \
+#     -f ./helm/mcp-server/values.local.yaml \
+#     --namespace mcp-presidio --create-namespace
+# ---------------------------------------------------------------------------
+
+replicaCount: 1
+
+image:
+  repository: mcp-server
+  tag: "0.1.0"
+  # Use locally built image — do not pull from registry
+  pullPolicy: Never
+
+# Relaxed resource constraints for local development
+resources:
+  limits:
+    memory: 384Mi
+    cpu: 1000m
+  requests:
+    memory: 128Mi
+    cpu: 100m
+
+# NodePort — exposes the server on localhost:30800 via kind extraPortMappings
+# (kind-config.yaml must include containerPort: 30800)
+service:
+  type: NodePort
+  port: 8000
+  nodePort: 30800

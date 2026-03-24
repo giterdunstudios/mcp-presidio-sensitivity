@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
-# Presidio Sensitivity Worker — Container Image
+# MCP Presidio Sensitivity Server — Container Image
 #
 # Security requirements:
-#   - Non-root user (uid 1000)
+#   - Non-root user (uid 1001 — distinct from worker uid 1000)
 #   - No bash; sh is acceptable
 #   - Minimal image surface (python:3.11-slim)
 #   - No secrets baked in — all config via env vars at runtime
@@ -12,8 +12,10 @@
 FROM python:3.11-slim
 
 # -- Non-root user ----------------------------------------------------------
-RUN groupadd --gid 1000 worker && \
-    useradd --uid 1000 --gid worker --no-create-home --shell /usr/sbin/nologin worker
+# uid 1001 is distinct from the worker (uid 1000) to avoid shared identity
+# if both containers ever run on the same node with shared UID namespacing.
+RUN groupadd --gid 1001 mcpserver && \
+    useradd --uid 1001 --gid mcpserver --no-create-home --shell /usr/sbin/nologin mcpserver
 
 # -- Working directory -------------------------------------------------------
 WORKDIR /app
@@ -25,28 +27,27 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# -- spaCy NLP model ---------------------------------------------------------
-# Presidio AnalyzerEngine requires a spaCy model at startup.
-# en_core_web_lg is the Presidio default; baked into the image so the
-# container starts without internet access.
-RUN python -m spacy download en_core_web_lg
-
 # -- Application source ------------------------------------------------------
 COPY *.py ./
+COPY auth/ ./auth/
+COPY authorization/ ./authorization/
+COPY tools/ ./tools/
+COPY backend/ ./backend/
+COPY observability/ ./observability/
 
 # -- Ownership ---------------------------------------------------------------
-RUN chown -R worker:worker /app
+RUN chown -R mcpserver:mcpserver /app
 
 # -- Switch to non-root user -------------------------------------------------
-USER worker
+USER mcpserver
 
 # -- Expose port -------------------------------------------------------------
-EXPOSE 8080
+EXPOSE 8000
 
 # -- Health check ------------------------------------------------------------
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
 # -- Entrypoint --------------------------------------------------------------
 # Use exec form to ensure proper signal handling and no shell wrapping.
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

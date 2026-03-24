@@ -1,0 +1,19 @@
+apiVersion: v2
+name: mcp-server
+description: >
+  MCP Presidio Sensitivity Server.
+  Trust boundary and control plane between callers and the Presidio worker.
+  Validates JWT tokens, enforces scope-based authorization, and proxies
+  scan requests to the Presidio worker without token passthrough.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - mcp
+  - presidio
+  - sensitivity
+  - classification
+  - oauth
+  - jwt
+maintainers:
+  - name: mcp-presidio-sensitivity-team

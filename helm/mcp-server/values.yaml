@@ -1,0 +1,95 @@
+# ---------------------------------------------------------------------------
+# MCP Server — Helm Values (production defaults)
+# ---------------------------------------------------------------------------
+
+replicaCount: 1
+
+image:
+  repository: mcp-server
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Resource limits — enforced by the platform, not the Dockerfile
+# ---------------------------------------------------------------------------
+resources:
+  limits:
+    memory: 256Mi
+    cpu: 500m
+  requests:
+    memory: 128Mi
+    cpu: 100m
+
+# ---------------------------------------------------------------------------
+# MCP server configuration (injected as environment variables via ConfigMap)
+# ---------------------------------------------------------------------------
+config:
+  issuerUrl: "http://hydra.mcp-presidio.svc.cluster.local:4444"
+  jwksUri: "http://hydra.mcp-presidio.svc.cluster.local:4444/.well-known/jwks.json"
+  audience: "mcp-presidio-server"
+  workerUrl: "http://presidio-worker.mcp-presidio.svc.cluster.local:8080"
+  jwksCacheTtlSeconds: 300
+  maxPayloadBytes: 1048576
+  workerTimeoutSeconds: "30.0"
+  serverResourceUrl: "http://mcp-server.mcp-presidio.svc.cluster.local:8000"
+  port: "8000"
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 8000
+
+# ---------------------------------------------------------------------------
+# Security context — non-root (uid 1001), read-only root filesystem
+# ---------------------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1001
+  capabilities:
+    drop:
+      - ALL
+
+# ---------------------------------------------------------------------------
+# Probes
+# MCP server /health requires no auth — suitable for Kubernetes probes.
+# ---------------------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# ---------------------------------------------------------------------------
+# Namespace
+# ---------------------------------------------------------------------------
+namespace: mcp-presidio
+
+# ---------------------------------------------------------------------------
+# Temporary directory for uvicorn (memory-backed tmpfs)
+# Required because readOnlyRootFilesystem: true prevents writes to /tmp
+# ---------------------------------------------------------------------------
+tmpVolume:
+  enabled: true
+  sizeLimit: 64Mi

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mcp-server.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "mcp-server.labels" . | nindent 4 }}
+data:
+  ISSUER_URL: {{ .Values.config.issuerUrl | quote }}
+  JWKS_URI: {{ .Values.config.jwksUri | quote }}
+  AUDIENCE: {{ .Values.config.audience | quote }}
+  WORKER_URL: {{ .Values.config.workerUrl | quote }}
+  JWKS_CACHE_TTL_SECONDS: {{ .Values.config.jwksCacheTtlSeconds | int | quote }}
+  MAX_PAYLOAD_BYTES: {{ .Values.config.maxPayloadBytes | int | quote }}
+  WORKER_TIMEOUT_SECONDS: {{ .Values.config.workerTimeoutSeconds | quote }}
+  SERVER_RESOURCE_URL: {{ .Values.config.serverResourceUrl | quote }}
+  PORT: {{ .Values.config.port | quote }}

@@ -10,3 +10,13 @@ hydra:
         - local-dev-secret-change-in-prod
     strategies:
       access_token: jwt
+
+service:
+  public:
+    type: NodePort
+    # Note: ory/hydra chart does not support nodePort field.
+    # After helm install, patch the service manually:
+    #   kubectl patch svc hydra-public -n mcp-presidio -p '{"spec":{"ports":[{"port":4444,"targetPort":4444,"nodePort":30444}]}}'
+  admin:
+    type: NodePort
+    # kubectl patch svc hydra-admin -n mcp-presidio -p '{"spec":{"ports":[{"port":4445,"targetPort":4445,"nodePort":30445}]}}'

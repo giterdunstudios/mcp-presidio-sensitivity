@@ -34,8 +34,9 @@ config:
 
 # ClusterIP is fine for local — use kubectl port-forward to reach the worker
 service:
-  type: ClusterIP
+  type: NodePort
   port: 8080
+  nodePort: 30808
 
 # Read-only root filesystem may interfere with local debugging; can be relaxed
 containerSecurityContext:

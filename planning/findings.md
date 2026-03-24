@@ -174,5 +174,32 @@ component breakdown, acceptance criteria, and test plan.
 
 ---
 
+## Phase 0 Empirical Findings
+
+### Presidio recognizer behavior (observed in demo testing)
+
+| Finding | Detail | Action |
+|---------|--------|--------|
+| DATE_TIME false positive | Benign date references ("next month", "quarterly") trigger `high` severity `block` because DATE_TIME maps to `direct_identifier`. This fires on almost any business text containing temporal language. | Deferred to Phase 1 — severity mapping for DATE_TIME needs context-gating or category reassignment |
+| Credit card detection accurate | Luhn-valid test card `4111111111111111` detected at score 1.0 | No action needed |
+| SSN detection accurate | IRS-reserved format `999-99-9999` detected correctly | No action needed |
+| Multi-entity payloads work correctly | Name + email + phone all detected and correctly categorised in one pass | No action needed |
+| Line-break evasion is a known gap | SSNs split across newlines are not detected (regex limitation) | Documented in corpus as expected false negative; evasion-resistant scanning is Phase 2+ |
+| AGE and AWS_ACCESS_KEY not available | Not in Presidio standard built-in set; category mappings retained in `classification.py` | Phase 1 — add custom recognizers |
+
+### Deployment findings
+
+| Finding | Detail | Resolution |
+|---------|--------|------------|
+| YAML float coercion | `maxPayloadBytes: 1048576` rendered as `1.048576e+06` in ConfigMap | Add `int` filter in Helm template |
+| `presidio_analyzer.__version__` missing | Package does not expose `__version__` attribute | Use `importlib.metadata.version('presidio-analyzer')` |
+| ory/hydra chart NodePort gap | Chart does not support `nodePort` field in values | Patch services post-deploy via `kubectl patch` |
+| spaCy model not in base image | `en_core_web_lg` must be downloaded at image build time | Add `RUN python -m spacy download en_core_web_lg` to Dockerfile |
+
 ## Open Questions
 All Stage 1 questions resolved. See task_plan.md and ways-of-working.md §9.
+
+Phase 1 will generate empirical detector behavior data to inform classification model calibration. Key questions for Phase 1:
+- What is the right treatment of DATE_TIME in the severity model? (standalone date vs date combined with other PII)
+- Are the current confidence thresholds (0.4 min score, 0.75 high-confidence threshold) well-calibrated for real payloads?
+- Does the `scp` vs `scope` claim handling in the MCP server token verifier behave correctly across Hydra versions?
