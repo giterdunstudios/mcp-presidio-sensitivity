@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "presidio-worker.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "presidio-worker.labels" . | nindent 4 }}
+data:
+  MAX_PAYLOAD_BYTES: {{ .Values.config.maxPayloadBytes | quote }}
+  DEFAULT_LANGUAGE: {{ .Values.config.defaultLanguage | quote }}
+  POLICY_PROFILE: {{ .Values.config.policyProfile | quote }}
+  MIN_SCORE_THRESHOLD: {{ .Values.config.minScoreThreshold | quote }}

@@ -1,0 +1,16 @@
+# Presidio sensitivity worker dependencies
+# Pin minor versions; patch versions are resolved at build time.
+# Scan with 'pip-audit' before each release.
+
+presidio-analyzer>=2.2,<3.0
+
+# NLP model support — spaCy en_core_web_lg is downloaded separately in
+# the CI build step; the image itself uses the built-in spaCy models.
+spacy>=3.7,<4.0
+
+# HTTP framework
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29,<1.0
+
+# Request/response validation
+pydantic>=2.6,<3.0

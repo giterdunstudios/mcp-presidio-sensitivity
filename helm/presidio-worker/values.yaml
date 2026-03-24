@@ -1,0 +1,95 @@
+# ---------------------------------------------------------------------------
+# Presidio Worker — Helm Values (production defaults)
+# ---------------------------------------------------------------------------
+
+replicaCount: 1
+
+image:
+  repository: presidio-worker
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Resource limits — enforced by the platform, not the Dockerfile
+# ---------------------------------------------------------------------------
+resources:
+  limits:
+    memory: 512Mi
+    cpu: 500m
+  requests:
+    memory: 256Mi
+    cpu: 250m
+
+# ---------------------------------------------------------------------------
+# Worker configuration (injected as environment variables via ConfigMap)
+# ---------------------------------------------------------------------------
+config:
+  maxPayloadBytes: 1048576   # 1 MiB
+  defaultLanguage: en
+  policyProfile: default
+  minScoreThreshold: "0.4"
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 8080
+
+# ---------------------------------------------------------------------------
+# Security context — non-root, read-only root filesystem
+# ---------------------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# ---------------------------------------------------------------------------
+# Probes
+# ---------------------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 45
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 45
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# ---------------------------------------------------------------------------
+# Namespace
+# ---------------------------------------------------------------------------
+namespace: mcp-presidio
+
+# ---------------------------------------------------------------------------
+# Network policy — restrict egress to DNS only (worker has no outbound deps)
+# Enable when network policies are supported by the cluster.
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# Temporary directory for uvicorn/spaCy (memory-backed tmpfs)
+# ---------------------------------------------------------------------------
+tmpVolume:
+  enabled: true
+  sizeLimit: 128Mi

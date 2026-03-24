@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Presidio Worker — Local override values (Docker Desktop / Kubernetes / WSL2)
+#
+# Usage:
+#   helm upgrade --install presidio-worker ./helm/presidio-worker \
+#     -f ./helm/presidio-worker/values.yaml \
+#     -f ./helm/presidio-worker/values.local.yaml \
+#     --namespace mcp-presidio --create-namespace
+# ---------------------------------------------------------------------------
+
+replicaCount: 1
+
+image:
+  repository: presidio-worker
+  tag: "0.1.0"
+  # Use locally built image — do not pull from registry
+  pullPolicy: Never
+
+# Relaxed resource constraints for local development
+resources:
+  limits:
+    memory: 768Mi
+    cpu: 1000m
+  requests:
+    memory: 512Mi
+    cpu: 250m
+
+# Local config overrides (mirrors defaults, explicit for clarity)
+config:
+  maxPayloadBytes: 1048576
+  defaultLanguage: en
+  policyProfile: default
+  minScoreThreshold: "0.4"
+
+# ClusterIP is fine for local — use kubectl port-forward to reach the worker
+service:
+  type: ClusterIP
+  port: 8080
+
+# Read-only root filesystem may interfere with local debugging; can be relaxed
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# Temp volume required for spaCy model cache under read-only root FS
+tmpVolume:
+  enabled: true
+  sizeLimit: 256Mi

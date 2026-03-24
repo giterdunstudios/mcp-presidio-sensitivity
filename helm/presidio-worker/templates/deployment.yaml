@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "presidio-worker.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "presidio-worker.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "presidio-worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "presidio-worker.selectorLabels" . | nindent 8 }}
+    spec:
+      # -----------------------------------------------------------------
+      # Pod security — non-root, no privilege escalation
+      # -----------------------------------------------------------------
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      # No service account token auto-mount — worker has no K8s API access
+      automountServiceAccountToken: false
+
+      containers:
+        - name: presidio-worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # -----------------------------------------------------------------
+          # Environment — sourced from ConfigMap only; no secrets here
+          # -----------------------------------------------------------------
+          envFrom:
+            - configMapRef:
+                name: {{ include "presidio-worker.fullname" . }}-config
+
+          # -----------------------------------------------------------------
+          # Container security context
+          # -----------------------------------------------------------------
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+
+          # -----------------------------------------------------------------
+          # Resource limits — enforced by platform
+          # -----------------------------------------------------------------
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # -----------------------------------------------------------------
+          # Probes
+          # -----------------------------------------------------------------
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+
+          # -----------------------------------------------------------------
+          # Volume mounts
+          # Read-only root FS requires a writable /tmp for uvicorn + spaCy
+          # -----------------------------------------------------------------
+          volumeMounts:
+            {{- if .Values.tmpVolume.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+
+      # -----------------------------------------------------------------
+      # Volumes
+      # -----------------------------------------------------------------
+      volumes:
+        {{- if .Values.tmpVolume.enabled }}
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.tmpVolume.sizeLimit }}
+        {{- end }}

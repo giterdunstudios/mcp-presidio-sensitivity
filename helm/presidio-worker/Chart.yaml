@@ -1,0 +1,16 @@
+apiVersion: v2
+name: presidio-worker
+description: >
+  Presidio sensitivity scanner worker.
+  Accepts text payloads, runs embedded Presidio analysis, and returns
+  bounded summary results.  Payload is never persisted or logged.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - presidio
+  - sensitivity
+  - classification
+  - privacy
+maintainers:
+  - name: mcp-presidio-sensitivity-team
