@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: mcp-server
+  repository: mcp-presidio-sensitivity
   tag: "0.1.0"
   pullPolicy: IfNotPresent
 
@@ -24,14 +24,14 @@ resources:
 # MCP server configuration (injected as environment variables via ConfigMap)
 # ---------------------------------------------------------------------------
 config:
-  issuerUrl: "http://hydra.mcp-presidio.svc.cluster.local:4444"
-  jwksUri: "http://hydra.mcp-presidio.svc.cluster.local:4444/.well-known/jwks.json"
+  oidcDiscoveryUrl: "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local/.well-known/openid-configuration"
+  issuerUrl: "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local"
   audience: "mcp-presidio-server"
   workerUrl: "http://presidio-worker.mcp-presidio.svc.cluster.local:8080"
   jwksCacheTtlSeconds: 300
   maxPayloadBytes: 1048576
   workerTimeoutSeconds: "30.0"
-  serverResourceUrl: "http://mcp-server.mcp-presidio.svc.cluster.local:8000"
+  serverResourceUrl: "http://mcp-presidio-sensitivity.mcp-presidio.svc.cluster.local:8000"
   port: "8000"
 
 # ---------------------------------------------------------------------------

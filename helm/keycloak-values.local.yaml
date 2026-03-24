@@ -1,0 +1,49 @@
+# ---------------------------------------------------------------------------
+# Keycloak — Local override values (bitnami/keycloak chart)
+#
+# Usage:
+#   helm upgrade --install keycloak bitnami/keycloak \
+#     -f ./helm/keycloak-values.local.yaml \
+#     --namespace mcp-presidio --wait --timeout 180s
+# ---------------------------------------------------------------------------
+
+namespace: mcp-presidio
+
+auth:
+  adminUser: admin
+  adminPassword: change-me-in-prod
+
+# Dev mode: no TLS, no clustering, embedded H2 database (no PostgreSQL)
+production: false
+proxy: edge
+
+# Disable the PostgreSQL subchart — use Keycloak's embedded H2 for local dev.
+# Without this the chart deploys Postgres which adds ~2 min startup time.
+postgresql:
+  enabled: false
+
+# Import the mcp-local realm at startup from the mounted ConfigMap
+extraStartupArgs: "--import-realm"
+
+extraVolumes:
+  - name: realm-import
+    configMap:
+      name: keycloak-realm-import
+
+extraVolumeMounts:
+  - name: realm-import
+    mountPath: /opt/bitnami/keycloak/data/import
+    readOnly: true
+
+service:
+  type: NodePort
+  nodePorts:
+    http: 30880
+
+resources:
+  limits:
+    memory: 768Mi
+    cpu: 1000m
+  requests:
+    memory: 512Mi
+    cpu: 200m

@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "mcp-server.fullname" . }}-config
+  name: {{ include "mcp-presidio-sensitivity.fullname" . }}-config
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "mcp-server.labels" . | nindent 4 }}
+    {{- include "mcp-presidio-sensitivity.labels" . | nindent 4 }}
 data:
+  OIDC_DISCOVERY_URL: {{ .Values.config.oidcDiscoveryUrl | quote }}
   ISSUER_URL: {{ .Values.config.issuerUrl | quote }}
-  JWKS_URI: {{ .Values.config.jwksUri | quote }}
   AUDIENCE: {{ .Values.config.audience | quote }}
   WORKER_URL: {{ .Values.config.workerUrl | quote }}
   JWKS_CACHE_TTL_SECONDS: {{ .Values.config.jwksCacheTtlSeconds | int | quote }}

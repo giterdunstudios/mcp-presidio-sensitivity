@@ -19,7 +19,7 @@ from typing import Any, Optional
 
 from backend.worker_client import WorkerError, call_worker
 
-logger = logging.getLogger("mcp-server.tools.classify")
+logger = logging.getLogger("mcp-presidio-sensitivity.tools.classify")
 
 
 async def run_classify(
@@ -63,7 +63,7 @@ async def run_classify(
         tenant_policy=tenant_policy,
         threshold_profile=threshold_profile,
         correlation_id=effective_workflow_id,
-        source_system="mcp-server",
+        source_system="mcp-presidio-sensitivity",
     )
 
     return result.model_dump(mode="json")

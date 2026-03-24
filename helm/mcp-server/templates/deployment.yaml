@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "mcp-server.fullname" . }}
+  name: {{ include "mcp-presidio-sensitivity.fullname" . }}
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "mcp-server.labels" . | nindent 4 }}
+    {{- include "mcp-presidio-sensitivity.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "mcp-server.selectorLabels" . | nindent 6 }}
+      {{- include "mcp-presidio-sensitivity.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "mcp-server.selectorLabels" . | nindent 8 }}
+        {{- include "mcp-presidio-sensitivity.selectorLabels" . | nindent 8 }}
     spec:
       # -----------------------------------------------------------------
       # Pod security — non-root (uid 1001), no privilege escalation
@@ -26,7 +26,7 @@ spec:
       automountServiceAccountToken: false
 
       containers:
-        - name: mcp-server
+        - name: mcp-presidio-sensitivity
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
 
@@ -40,7 +40,7 @@ spec:
           # -----------------------------------------------------------------
           envFrom:
             - configMapRef:
-                name: {{ include "mcp-server.fullname" . }}-config
+                name: {{ include "mcp-presidio-sensitivity.fullname" . }}-config
 
           # -----------------------------------------------------------------
           # Container security context

@@ -23,7 +23,7 @@ from pydantic import ValidationError
 import config
 from backend.models import WorkerRequestMetadata, WorkerScanRequest, WorkerScanResponse
 
-logger = logging.getLogger("mcp-server.backend")
+logger = logging.getLogger("mcp-presidio-sensitivity.backend")
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ async def call_worker(
     tenant_policy: str = "default",
     threshold_profile: str = "default",
     correlation_id: str,
-    source_system: str = "mcp-server",
+    source_system: str = "mcp-presidio-sensitivity",
 ) -> WorkerScanResponse:
     """
     Forward a scan request to the Presidio worker and return the parsed response.

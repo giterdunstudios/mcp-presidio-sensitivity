@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "mcp-server.name" -}}
+{{- define "mcp-presidio-sensitivity.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "mcp-server.fullname" -}}
+{{- define "mcp-presidio-sensitivity.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,16 +24,16 @@ Create a default fully qualified app name.
 {{/*
 Create chart label.
 */}}
-{{- define "mcp-server.chart" -}}
+{{- define "mcp-presidio-sensitivity.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels.
 */}}
-{{- define "mcp-server.labels" -}}
-helm.sh/chart: {{ include "mcp-server.chart" . }}
-{{ include "mcp-server.selectorLabels" . }}
+{{- define "mcp-presidio-sensitivity.labels" -}}
+helm.sh/chart: {{ include "mcp-presidio-sensitivity.chart" . }}
+{{ include "mcp-presidio-sensitivity.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
@@ -41,7 +41,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels.
 */}}
-{{- define "mcp-server.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "mcp-server.name" . }}
+{{- define "mcp-presidio-sensitivity.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "mcp-presidio-sensitivity.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}

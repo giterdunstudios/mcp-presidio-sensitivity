@@ -36,7 +36,7 @@ config:
 service:
   type: NodePort
   port: 8080
-  nodePort: 30808
+  nodePort: 30890
 
 # Read-only root filesystem may interfere with local debugging; can be relaxed
 containerSecurityContext:

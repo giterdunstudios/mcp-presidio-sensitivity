@@ -1,13 +1,14 @@
 """
 JWT claim extraction helpers.
 
-Key Hydra-specific detail:
-  Hydra uses `scp` as the scope claim name, not the OAuth 2.0 standard
-  `scope` string.  The `scp` claim is a JSON array of scope strings.
-  This module normalises the extraction so the rest of the codebase
-  works with a plain Python set regardless of claim name.
+Keycloak uses the standard OAuth 2.0 `scope` claim: a space-separated string
+per RFC 6749.  This module normalises extraction so the rest of the codebase
+works with a plain Python frozenset regardless of which claim name is present.
 
-See token-validation-report.md Step 3 for the confirmed claim structure.
+Supported claim shapes (in priority order):
+  1. ``scope`` string  — Keycloak (primary): ``{"scope": "tools:classify.submit openid"}``
+  2. ``scp`` array     — Hydra (fallback, defensive compatibility):
+                         ``{"scp": ["tools:classify.submit"]}``
 """
 
 from __future__ import annotations
@@ -19,24 +20,28 @@ def extract_scopes(claims: dict[str, Any]) -> frozenset[str]:
     """
     Return the set of scopes from a decoded JWT payload.
 
-    Hydra encodes scopes in `scp` as a list, e.g.:
-        {"scp": ["tools:classify.submit"]}
+    Keycloak encodes scopes in the standard ``scope`` string claim, e.g.:
+        {"scope": "tools:classify.submit openid"}
 
-    Falls back to the standard `scope` string claim if `scp` is absent,
-    splitting on whitespace per RFC 6749.
+    Falls back to the ``scp`` array claim for defensive Hydra compatibility
+    if ``scope`` is absent.
     """
-    # Hydra primary claim
+    # Primary: standard OAuth 2.0 `scope` string (Keycloak)
+    scope_str = claims.get("scope")
+    if scope_str is not None:
+        if isinstance(scope_str, str) and scope_str:
+            return frozenset(scope_str.split())
+        # Defensive: scope present but not a usable string — fall through
+        if scope_str:
+            return frozenset({str(scope_str)})
+
+    # Fallback: Hydra-style `scp` array
     scp = claims.get("scp")
     if scp is not None:
         if isinstance(scp, list):
             return frozenset(str(s) for s in scp)
         # Defensive: scp present but not a list — treat as single scope
         return frozenset({str(scp)})
-
-    # Fallback: standard `scope` string
-    scope_str = claims.get("scope", "")
-    if scope_str:
-        return frozenset(scope_str.split())
 
     return frozenset()
 

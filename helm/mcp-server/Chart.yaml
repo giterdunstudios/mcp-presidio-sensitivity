@@ -1,5 +1,5 @@
 apiVersion: v2
-name: mcp-server
+name: mcp-presidio-sensitivity
 description: >
   MCP Presidio Sensitivity Server.
   Trust boundary and control plane between callers and the Presidio worker.

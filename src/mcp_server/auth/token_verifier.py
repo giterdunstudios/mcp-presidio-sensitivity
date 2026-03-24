@@ -1,81 +1,67 @@
 """
-JWT validation with JWKS-backed key fetching and in-memory key cache.
+JWT validation with JWKS-backed key fetching via OIDC discovery.
 
 Validation steps (in order):
   1. Extract Bearer token from Authorization header
-  2. Fetch signing keys from JWKS URI (with TTL cache)
-  3. Decode and verify RS256 signature using fetched public key
-  4. Verify `iss` matches configured ISSUER_URL
-  5. Verify `aud` contains configured AUDIENCE
-  6. Verify `exp` is in the future
-  7. Verify `nbf` if present (token not yet valid)
+  2. Resolve JWKS URI via OIDC discovery (TTL-cached)
+  3. Fetch signing key from JWKS URI via PyJWKClient (TTL-cached)
+  4. Decode and verify RS256 signature using fetched public key
+  5. Verify `iss` matches issuer from OIDC discovery
+  6. Verify `aud` contains configured AUDIENCE
+  7. Verify `exp` is in the future
+  8. Verify `nbf` if present (token not yet valid)
 
 On any failure: raise TokenMissingError or TokenInvalidError.
 Callers translate these to 401 responses — see auth/errors.py.
 
 Security constraints:
-  - JWKS endpoint is always fetched from the configured issuer URI.
+  - JWKS endpoint is always derived from OIDC discovery, never hardcoded.
     Public keys are never hardcoded.
   - Algorithm is pinned to RS256.  `alg: none` and symmetric algorithms
-    are explicitly rejected by the jose library when algorithms= is set.
+    are explicitly rejected because algorithms=["RS256"] is set.
   - JWKS fetch errors surface as TokenInvalidError (not 5xx) so the
     server does not expose backend connectivity information to callers.
+  - PyJWT is used in place of python-jose to avoid the transitive ecdsa
+    dependency (CVE-2024-23342).
 """
 
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
-import httpx
-from jose import JWTError, jwk, jwt
-from jose.utils import base64url_decode
+import jwt
+from jwt import PyJWKClient
 
 import config
+from auth import discovery
 from auth.claims import extract_scopes, extract_subject
 from auth.errors import TokenInvalidError, TokenMissingError
 
-logger = logging.getLogger("mcp-server.auth")
+logger = logging.getLogger("mcp-presidio-sensitivity.auth")
 
 # ---------------------------------------------------------------------------
-# JWKS cache
+# JWKS client (lazily initialised on first verify_token call)
 # ---------------------------------------------------------------------------
+# The discovery module owns TTL caching of the OIDC config document.
+# We create the PyJWKClient once with the discovered JWKS URI and cache it
+# here.  If the discovery module refreshes (after TTL expiry) the URI is
+# stable for the same issuer, so the existing client remains valid.
 
-_jwks_cache: dict[str, Any] = {}
-_jwks_fetched_at: float = 0.0
-
-
-def _fetch_jwks() -> dict[str, Any]:
-    """
-    Fetch the JWKS document from the configured URI.
-
-    Returns the parsed JSON object.  Raises TokenInvalidError if the
-    fetch fails — this prevents the server from returning 5xx on auth paths.
-    """
-    try:
-        response = httpx.get(config.JWKS_URI, timeout=5.0)
-        response.raise_for_status()
-        return response.json()
-    except Exception as exc:
-        logger.warning("JWKS fetch failed: %s", type(exc).__name__)
-        raise TokenInvalidError("Unable to fetch signing keys") from exc
+_jwks_client: PyJWKClient | None = None
 
 
-def _get_jwks() -> dict[str, Any]:
-    """
-    Return the cached JWKS document, refreshing if the TTL has expired.
-
-    Cache TTL is controlled by config.JWKS_CACHE_TTL_SECONDS (default 300s).
-    """
-    global _jwks_cache, _jwks_fetched_at
-
-    now = time.monotonic()
-    if not _jwks_cache or (now - _jwks_fetched_at) > config.JWKS_CACHE_TTL_SECONDS:
-        _jwks_cache = _fetch_jwks()
-        _jwks_fetched_at = now
-
-    return _jwks_cache
+def _get_jwks_client() -> PyJWKClient:
+    """Return the module-level PyJWKClient, initialising it on first use."""
+    global _jwks_client
+    if _jwks_client is None:
+        jwks_uri = discovery.get_jwks_uri()
+        _jwks_client = PyJWKClient(
+            jwks_uri,
+            cache_keys=True,
+            lifespan=config.JWKS_CACHE_TTL_SECONDS,
+        )
+    return _jwks_client
 
 
 # ---------------------------------------------------------------------------
@@ -116,24 +102,31 @@ def verify_token(authorization_header: str | None) -> dict[str, Any]:
     """
     raw_token = _extract_bearer_token(authorization_header)
 
-    jwks_doc = _get_jwks()
+    try:
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(raw_token)
+    except Exception as exc:
+        # Catch all exceptions here: PyJWKClientError covers JWKS fetch
+        # failures, but jwt.exceptions.DecodeError (raised on malformed
+        # tokens) is not a subclass of PyJWKClientError and would otherwise
+        # surface as a 500.
+        logger.warning("JWKS key fetch failed: %s", type(exc).__name__)
+        raise TokenInvalidError("Unable to fetch signing keys") from exc
 
     try:
         claims = jwt.decode(
             raw_token,
-            jwks_doc,
+            signing_key.key,
             algorithms=["RS256"],
-            audience=config.AUDIENCE,
+            audience=config.AUDIENCE or None,
             issuer=config.ISSUER_URL,
             options={
                 "verify_exp": True,
                 "verify_nbf": True,
                 "verify_iss": True,
-                "verify_aud": True,
-                "verify_at_hash": False,
+                "verify_aud": bool(config.AUDIENCE),
             },
         )
-    except JWTError as exc:
+    except jwt.exceptions.InvalidTokenError as exc:
         logger.warning("JWT validation failed: %s", type(exc).__name__)
         raise TokenInvalidError("Token validation failed") from exc
 

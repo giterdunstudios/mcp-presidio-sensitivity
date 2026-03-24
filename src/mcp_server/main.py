@@ -35,6 +35,8 @@ import uuid
 from contextvars import ContextVar
 from typing import Any, Optional
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -56,7 +58,7 @@ from observability.logging import configure_logging, log_request
 # ---------------------------------------------------------------------------
 
 configure_logging()
-logger = logging.getLogger("mcp-server")
+logger = logging.getLogger("mcp-presidio-sensitivity")
 
 # ---------------------------------------------------------------------------
 # Context variable — carries correlation_id from middleware into tool handler
@@ -77,6 +79,10 @@ mcp = FastMCP(
         "Returns a bounded summary result — never the payload content."
     ),
 )
+
+# Build the sub-app now so mcp._session_manager is initialised before the
+# lifespan function and FastAPI app are constructed below.
+mcp_app = mcp.streamable_http_app()
 
 
 @mcp.tool()
@@ -126,7 +132,7 @@ async def classify_payload_sensitivity(
             tenant_policy=tenant_policy,
             threshold_profile=threshold_profile,
             correlation_id=effective_workflow_id,
-            source_system="mcp-server",
+            source_system="mcp-presidio-sensitivity",
         )
         return result.model_dump(mode="json")
     except WorkerError as exc:
@@ -136,12 +142,34 @@ async def classify_payload_sensitivity(
 
 
 # ---------------------------------------------------------------------------
+# Lifespan — starts the MCP StreamableHTTPSessionManager task group.
+# mcp_app is created above so mcp._session_manager exists before this runs.
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info(
+        "MCP server starting",
+        extra={
+            "issuer_url": config.ISSUER_URL,
+            "audience": config.AUDIENCE,
+            "worker_url": config.WORKER_URL,
+            "port": config.PORT,
+        },
+    )
+    async with mcp._session_manager.run():
+        yield
+
+
+# ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
     title="MCP Presidio Sensitivity Server",
     version="0.1.0",
+    lifespan=lifespan,
     # Disable OpenAPI docs UI — reduces attack surface in production
     docs_url=None,
     redoc_url=None,
@@ -321,22 +349,4 @@ async def oauth_protected_resource() -> dict:
 # The FastMCP app is mounted at /mcp.  The JWT middleware intercepts all
 # requests to /mcp* before the MCP SDK sees them.
 
-mcp_app = mcp.streamable_http_app()
 app.mount("/mcp", mcp_app)
-
-# ---------------------------------------------------------------------------
-# Startup
-# ---------------------------------------------------------------------------
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    logger.info(
-        "MCP server starting",
-        extra={
-            "issuer_url": config.ISSUER_URL,
-            "audience": config.AUDIENCE,
-            "worker_url": config.WORKER_URL,
-            "port": config.PORT,
-        },
-    )

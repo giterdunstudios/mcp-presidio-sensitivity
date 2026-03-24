@@ -14,25 +14,30 @@ from __future__ import annotations
 import os
 
 # ---------------------------------------------------------------------------
-# OAuth / JWKS configuration
+# OAuth / OIDC configuration
 # ---------------------------------------------------------------------------
 
-# Issuer URL — the `iss` claim in incoming JWTs must match this value exactly.
-ISSUER_URL: str = os.environ.get(
-    "ISSUER_URL",
-    "http://hydra.mcp-presidio.svc.cluster.local:4444",
+# OIDC Discovery URL — used to derive JWKS URI and issuer at runtime.
+# The discovery document is TTL-cached; JWKS URI and issuer are never
+# hardcoded.
+OIDC_DISCOVERY_URL: str = os.environ.get(
+    "OIDC_DISCOVERY_URL",
+    "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local/.well-known/openid-configuration",
 )
 
-# JWKS URI — used to fetch the Authorization Server's public signing keys.
-JWKS_URI: str = os.environ.get(
-    "JWKS_URI",
-    "http://hydra.mcp-presidio.svc.cluster.local:4444/.well-known/jwks.json",
+# Issuer URL — exposed in Protected Resource Metadata (/.well-known/…) and
+# startup logging.  Token validation derives the issuer from OIDC discovery
+# rather than this value; keeping it here avoids modifying main.py.
+ISSUER_URL: str = os.environ.get(
+    "ISSUER_URL",
+    "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local",
 )
 
 # Expected audience — the `aud` claim in incoming JWTs must include this value.
 AUDIENCE: str = os.environ.get("AUDIENCE", "mcp-presidio-server")
 
-# JWKS cache TTL in seconds (default: 5 minutes)
+# JWKS cache TTL in seconds (default: 5 minutes).
+# Reused by the discovery module for its own TTL cache.
 JWKS_CACHE_TTL_SECONDS: int = int(os.environ.get("JWKS_CACHE_TTL_SECONDS", 300))
 
 # ---------------------------------------------------------------------------
@@ -61,5 +66,5 @@ PORT: int = int(os.environ.get("PORT", 8000))
 # Server resource URL — used in Protected Resource Metadata
 SERVER_RESOURCE_URL: str = os.environ.get(
     "SERVER_RESOURCE_URL",
-    f"http://mcp-server.mcp-presidio.svc.cluster.local:{PORT}",
+    f"http://mcp-presidio-sensitivity.mcp-presidio.svc.cluster.local:{PORT}",
 )

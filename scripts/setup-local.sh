@@ -4,15 +4,14 @@
 # What this does:
 #   1. Creates the kind cluster with host port mappings
 #   2. Creates the mcp-presidio namespace
-#   3. Deploys Hydra via Helm and patches its NodePort services
+#   3. Deploys Keycloak via Helm (bitnami/keycloak) with realm import
 #   4. Loads the presidio-worker image and deploys it via Helm
-#   5. Waits for all pods to be ready
-#   6. Registers the test OAuth client in Hydra
+#   5. Loads the mcp-presidio-sensitivity image and deploys it via Helm (if built)
+#   6. Waits for all pods to be ready
 #   7. Runs a smoke test against each endpoint
 #
 # Prerequisites:
 #   - kind, kubectl, helm, docker (with docker group access)
-#   - ory/hydra Helm repo added:  helm repo add ory https://k8s.ory.sh/helm/charts
 #   - presidio-worker image built: docker build -t presidio-worker:0.1.0 src/worker/
 #
 # Usage:
@@ -34,7 +33,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CLUSTER_NAME="mcp-presidio"
 NAMESPACE="mcp-presidio"
 WORKER_IMAGE="presidio-worker:0.1.0"
-MCP_SERVER_IMAGE="mcp-server:0.1.0"
+MCP_SERVER_IMAGE="mcp-presidio-sensitivity:0.1.0"
 
 SKIP_BUILD=false
 TEARDOWN=false
@@ -79,11 +78,11 @@ if $SKIP_BUILD; then
   log "Skipping image builds (--skip-build passed)"
 else
   log "Building $WORKER_IMAGE..."
-  docker build -t "$WORKER_IMAGE" "$PROJECT_ROOT/src/worker/"
+  sg docker -c "docker build -t '$WORKER_IMAGE' '$PROJECT_ROOT/src/worker/'"
 
   if [[ -d "$PROJECT_ROOT/src/mcp_server" ]]; then
     log "Building $MCP_SERVER_IMAGE..."
-    docker build -t "$MCP_SERVER_IMAGE" "$PROJECT_ROOT/src/mcp_server/"
+    sg docker -c "docker build -t '$MCP_SERVER_IMAGE' '$PROJECT_ROOT/src/mcp_server/'"
   else
     log "Skipping $MCP_SERVER_IMAGE build — src/mcp_server/ not yet present (Lane D pending)"
   fi
@@ -112,27 +111,25 @@ kubectl get namespace "$NAMESPACE" &>/dev/null || kubectl create namespace "$NAM
 log "Namespace $NAMESPACE ready"
 
 # ---------------------------------------------------------------------------
-# 4. Deploy Hydra
+# 4. Deploy Keycloak
 # ---------------------------------------------------------------------------
 
-log "Deploying Hydra..."
-helm upgrade --install hydra ory/hydra \
-  -f "$PROJECT_ROOT/helm/hydra-values.local.yaml" \
+log "Creating Keycloak realm ConfigMap..."
+kubectl create configmap keycloak-realm-import \
+  --from-file="$PROJECT_ROOT/keycloak/realm-import/mcp-local-realm.json" \
   --namespace "$NAMESPACE" \
-  --wait --timeout 120s
+  --dry-run=client -o yaml | kubectl apply -f -
 
-log "Patching Hydra NodePort services..."
-kubectl patch svc hydra-public -n "$NAMESPACE" \
-  -p '{"spec":{"ports":[{"port":4444,"targetPort":4444,"nodePort":30444}]}}'
-kubectl patch svc hydra-admin -n "$NAMESPACE" \
-  -p '{"spec":{"ports":[{"port":4445,"targetPort":4445,"nodePort":30445}]}}'
+log "Deploying Keycloak..."
+kubectl apply -f "$PROJECT_ROOT/infrastructure/keycloak-local.yaml"
+kubectl rollout status deployment/keycloak -n "$NAMESPACE" --timeout=300s
 
 # ---------------------------------------------------------------------------
 # 5. Load and deploy presidio-worker
 # ---------------------------------------------------------------------------
 
 log "Loading $WORKER_IMAGE into kind cluster..."
-kind load docker-image "$WORKER_IMAGE" --name "$CLUSTER_NAME"
+sg docker -c "kind load docker-image '$WORKER_IMAGE' --name '$CLUSTER_NAME'"
 
 log "Deploying presidio-worker..."
 helm upgrade --install presidio-worker "$PROJECT_ROOT/helm/presidio-worker" \
@@ -140,51 +137,27 @@ helm upgrade --install presidio-worker "$PROJECT_ROOT/helm/presidio-worker" \
   -f "$PROJECT_ROOT/helm/presidio-worker/values.local.yaml" \
   --namespace "$NAMESPACE" \
   --wait --timeout 180s
+kubectl rollout restart deployment/presidio-worker -n "$NAMESPACE"
+kubectl rollout status deployment/presidio-worker -n "$NAMESPACE" --timeout=120s
 
 # ---------------------------------------------------------------------------
-# 6. Load and deploy mcp-server (if built)
+# 6. Load and deploy mcp-presidio-sensitivity (if built)
 # ---------------------------------------------------------------------------
 
-if docker image inspect "$MCP_SERVER_IMAGE" &>/dev/null; then
+if sg docker -c "docker image inspect '$MCP_SERVER_IMAGE'" &>/dev/null; then
   log "Loading $MCP_SERVER_IMAGE into kind cluster..."
-  kind load docker-image "$MCP_SERVER_IMAGE" --name "$CLUSTER_NAME"
+  sg docker -c "kind load docker-image '$MCP_SERVER_IMAGE' --name '$CLUSTER_NAME'"
 
-  log "Deploying mcp-server..."
-  helm upgrade --install mcp-server "$PROJECT_ROOT/helm/mcp-server" \
+  log "Deploying mcp-presidio-sensitivity..."
+  helm upgrade --install mcp-presidio-sensitivity "$PROJECT_ROOT/helm/mcp-server" \
     -f "$PROJECT_ROOT/helm/mcp-server/values.yaml" \
     -f "$PROJECT_ROOT/helm/mcp-server/values.local.yaml" \
     --namespace "$NAMESPACE" \
     --wait --timeout 120s
-
-  log "Patching mcp-server NodePort service..."
-  kubectl patch svc mcp-server -n "$NAMESPACE" \
-    -p '{"spec":{"ports":[{"port":8000,"targetPort":8000,"nodePort":30800}]}}' 2>/dev/null || true
+  kubectl rollout restart deployment/mcp-presidio-sensitivity -n "$NAMESPACE"
+  kubectl rollout status deployment/mcp-presidio-sensitivity -n "$NAMESPACE" --timeout=120s
 else
-  log "Skipping mcp-server deploy — image not built (Lane D pending)"
-fi
-
-# ---------------------------------------------------------------------------
-# 7. Register OAuth test client
-# ---------------------------------------------------------------------------
-
-log "Registering test OAuth client..."
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:4445/admin/clients \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_id": "test-agent-client",
-    "client_secret": "test-agent-secret-change-in-prod",
-    "grant_types": ["client_credentials"],
-    "scope": "tools:classify.submit tools:health.read",
-    "audience": ["mcp-presidio-server"],
-    "token_endpoint_auth_method": "client_secret_post"
-  }')
-
-if [[ "$RESPONSE" == "201" ]]; then
-  log "OAuth client registered"
-elif [[ "$RESPONSE" == "409" ]]; then
-  log "OAuth client already exists — skipping"
-else
-  fail "Unexpected response registering OAuth client: HTTP $RESPONSE"
+  log "Skipping mcp-presidio-sensitivity deploy — image not built (Lane D pending)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -203,9 +176,11 @@ check() {
   log "  OK  $name"
 }
 
-check "Hydra public health"  "http://localhost:4444/.well-known/jwks.json" "keys"
-check "Hydra admin health"   "http://localhost:4445/health/ready"           '"ok"'
-check "Worker health"        "http://localhost:8080/health"                 '"ok"'
+check "Keycloak OIDC discovery" \
+  "http://localhost:8080/realms/mcp-local/.well-known/openid-configuration" \
+  "issuer"
+
+check "Worker health" "http://localhost:8090/health" '"ok"'
 
 if curl -sf "http://localhost:8000/health" &>/dev/null; then
   check "MCP server health" "http://localhost:8000/health" '"ok"'
@@ -218,9 +193,8 @@ fi
 log ""
 log "Stack is ready."
 log ""
-log "  Hydra public:     http://localhost:4444"
-log "  Hydra admin:      http://localhost:4445"
-log "  Presidio worker:  http://localhost:8080"
+log "  Keycloak:         http://localhost:8080"
+log "  Presidio worker:  http://localhost:8090"
 log "  MCP server:       $MCP_STATUS"
 log ""
 log "Tear down with:  ./scripts/setup-local.sh --teardown"

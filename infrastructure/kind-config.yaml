@@ -3,17 +3,13 @@ apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
   extraPortMappings:
-  # Hydra public endpoint (token issuance, JWKS)
-  - containerPort: 30444
-    hostPort: 4444
-    protocol: TCP
-  # Hydra admin endpoint (client registration)
-  - containerPort: 30445
-    hostPort: 4445
+  # Keycloak HTTP endpoint (token issuance, JWKS, admin console)
+  - containerPort: 30880
+    hostPort: 8080
     protocol: TCP
   # Presidio worker
-  - containerPort: 30808
-    hostPort: 8080
+  - containerPort: 30890
+    hostPort: 8090
     protocol: TCP
   # MCP server
   - containerPort: 30800

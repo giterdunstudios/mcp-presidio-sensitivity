@@ -37,7 +37,7 @@ Presidio-backed scan, and returns only a bounded summary result — never the pa
 ```
 
 **Caller:** Agents and services only. No human invokes this tool directly in production.
-**Auth:** OAuth client credentials (JWT bearer assertions). Hydra is the Authorization Server.
+**Auth:** OAuth client credentials (JWT bearer assertions). Keycloak is the Authorization Server.
 **Deployment:** Helm charts throughout — local (Docker Desktop / Kubernetes), staging, production.
 **Presidio:** Detection tool only — not the security boundary. The orchestrator owns trust.
 
@@ -46,7 +46,7 @@ Presidio-backed scan, and returns only a bounded summary result — never the pa
 ## Phases
 
 ### Phase 0: Design and Proving
-**Status:** `in_progress`
+**Status:** `complete`
 **Goal:** Validate architecture, confirm Presidio fit for target data types, establish
 the minimized output contract. Produce enough to submit synthetic text and receive
 a bounded result through the full authenticated path.
@@ -58,12 +58,12 @@ a bounded result through the full authenticated path.
 - [x] Deploy Hydra locally via Helm — confirm token issuance and JWKS endpoint
 - [x] Configure a test client (service account + client credentials) in Hydra
 - [x] Confirm Presidio recognizer coverage against target data types (synthetic test corpus — Lane C)
-- [ ] Produce architectural design document
+- [x] Produce architectural design document (deliverables/architecture-design.md)
 - [x] Confirm tool schema — input and output contracts (spec §2.3–2.5, implemented in worker + MCP server)
 - [x] Build minimal worker prototype (Helm chart, ephemeral worker, embedded Presidio)
 - [x] Build synthetic test corpus (Lane C — 46 test cases, 8 files)
-- [ ] Wire MCP server to Hydra — validate 401/403/200 flows end-to-end (Lane D built, cluster recreation pending)
-- [ ] Confirm failure paths do not leak payload data (Lane D Security/Privacy Lead review pending)
+- [x] Wire MCP server to Keycloak — validate 401/403/200 flows end-to-end (auth validated 2026-03-24)
+- [ ] Confirm failure paths do not leak payload data (Security/Privacy Lead review pending)
 **Exit Criteria:**
 - Full local stack running via Helm (`helm install` or `helm upgrade`)
 - Test client can obtain a token from Hydra and invoke `classify_payload_sensitivity`
@@ -76,25 +76,53 @@ a bounded result through the full authenticated path.
 ---
 
 ### Phase 1: MVP Implementation
-**Status:** `not_started`
+**Status:** `in_progress`
 **Goal:** Deliver the MCP tool with ephemeral scanning path, summary-only results,
 and audit metadata without payload persistence.
-**Build order (from spec):**
-- [ ] Define MCP tool contract and result schema
-- [ ] Build MCP server with schema validation and auth hooks
-- [ ] Implement ephemeral worker with embedded Presidio analysis
-- [ ] Add result minimizer — guarantee summary-only responses
-- [ ] Add audit storage with no payload persistence
-- [ ] Add monitoring, rate limiting, and operational controls
-- [ ] Revisit classification policy model after empirical detector behavior is understood
+
+Items carried in from Phase 0 — already done:
+- [x] MCP tool contract and result schema (`classify_payload_sensitivity`)
+- [x] MCP server with JWT auth middleware and scope enforcement
+- [x] Ephemeral worker with embedded Presidio analysis
+- [x] Result minimizer — bounded summary only, no payload in response
+
+**Build order:**
+
+**Stream 1 — Classification calibration (quick wins)**
+- [ ] Fix DATE_TIME severity: standalone date/time references should not reach `high` severity; reclassify to `low` with no category mapping unless co-occurring with another identifier
+- [ ] Lock exact dependency versions: generate `requirements.lock.txt` via `pip-compile` for both images; update Dockerfiles to install from lock file
+- [ ] Run `pip-audit` against lock files as part of build; fail build on high-severity CVEs
+
+**Stream 2 — Audit trail (no payload persistence)**
+- [ ] Define audit record schema: `scan_id`, `caller_subject`, `correlation_id`, `decision`, `max_severity_band`, `matched_categories`, `findings_count`, `policy_profile`, `detector_version`, `timestamp` — no payload fields
+- [ ] Write audit record to append-only structured log on every completed scan (in MCP server, after worker response received)
+- [ ] Audit records must be written even when the scan result is `block`
+- [ ] Confirm audit log does not contain payload content (add to security checklist)
+
+**Stream 3 — Operational hardening**
+- [ ] Explicit per-scan timeout: add configurable timeout (default 10s) to `call_worker()` in `backend/worker_client.py`; return `SCAN_TIMEOUT` error on breach
+- [ ] K8s NetworkPolicy: worker accepts inbound only from MCP server pod label
+- [ ] K8s NetworkPolicy: MCP server egress restricted to Keycloak service + worker service
+- [ ] Rate limiting: token-bucket per `caller_subject` on MCP server (fastapi-limiter or SlowAPI); configurable via values.yaml
+
+**Stream 4 — Observability**
+- [ ] Prometheus metrics on MCP server: request count by auth decision, scan count by decision/severity band, error count by error code, latency histogram
+- [ ] `/metrics` endpoint — exempt from auth, restricted to cluster-internal access via NetworkPolicy
+- [ ] Grafana dashboard scaffold: auth decisions, scan volume, error rates, latency p50/p99
+
 **Exit Criteria:**
-- Supported content types validated and enforced
-- Oversized payloads rejected
-- Valid payloads produce a `scan_id` and bounded result
-- Raw payload is not logged or stored anywhere
-- Worker runtime is ephemeral and bounded
-- Authenticated caller can invoke successfully
-- Unauthorized caller is rejected
+- Supported content types validated and enforced (already passing)
+- Oversized payloads rejected (already passing)
+- Valid payloads produce a `scan_id` and bounded result (already passing)
+- Raw payload is not logged or stored anywhere (Phase 0 validated)
+- Worker runtime is ephemeral and bounded (scan timeout enforced)
+- Authenticated caller invokes successfully (already passing)
+- Unauthorized caller is rejected (already passing)
+- Every completed scan emits an audit record with no payload content
+- Network policy restricts worker access to MCP server only
+- Rate limiting prevents scan abuse per caller
+- Prometheus metrics exported and documented
+- pip-audit clean (zero high-severity CVEs) on both images
 
 ---
 
@@ -189,7 +217,11 @@ DELIVERABLES="$PROJECT_ROOT/deliverables"
 | 5 | Priority stack: correctness/bounded behavior → security → reliability → expansion | Security is non-negotiable. No human catches a wrong answer at invocation time. Speed is valid but never top priority. | `user` + `spec` §4 | Session 4 |
 | 6 | Caller is agents and services only — service-to-service auth | Tool is invoked programmatically in agentic workflows. No human invokes directly in production. Developer use is for integration testing only. | `user` | Session 4 |
 | 7 | Helm as deployment model from Phase 0 | WSL2 with Docker Desktop supports Helm. Starting with Helm means local environment mirrors production from day one — isolation, network policies, and resource limits are real and tested, not retrofitted. Environment promotion is a values file swap, not a runtime model change. | `user` | Session 4 |
-| 8 | Hydra (ORY) as Authorization Server | Purpose-built for machine-to-machine OAuth client credentials. Lighter than Keycloak. No UI overhead. Official Helm chart available. Directly maps to production OAuth AS configuration for service-to-service flows. JWT bearer assertions preferred over client secrets per auth spec §3. | `user` + `agent-reasoning` | Session 4 |
+| 8 | ~~Hydra (ORY) as Authorization Server~~ → **Keycloak 26.x** | Hydra replaced in Phase 0. Hydra uses non-standard `scp` array claim (not `scope` string), has no OIDC discovery endpoint, and required manual `kubectl patch` for NodePort — all forcing custom auth middleware. Keycloak provides standard OIDC discovery, standard `scope` claim, and eliminates all bespoke auth logic. Auth reduced to PyJWT + PyJWKClient with OIDC discovery. bitnami/keycloak Helm chart rejected (requires PostgreSQL); plain K8s Deployment with `start-dev --import-realm` used instead. | `user` + `agent-reasoning` | 2026-03-24 |
+| 24 | PyJWT[crypto] replaces python-jose for JWT validation | python-jose carries transitive ecdsa dependency (CVE-2024-23342, Minerva timing attack). PyJWT uses cryptography library only; no ecdsa. PyJWKClient provides JWKS fetching with TTL cache. | `agent-reasoning` + `security` | 2026-03-24 |
+| 25 | OIDC discovery module decouples JWKS source from issuer validation URL | In local dev, Keycloak issues tokens with `iss: http://localhost:8080/realms/mcp-local` (via host port mapping) but the MCP server fetches JWKS from the cluster-internal URL. `ISSUER_URL` config overrides the issuer used for PyJWT validation independently of the discovery endpoint. | `agent-reasoning` | 2026-03-24 |
+| 26 | Presidio worker moved to port 8090; Keycloak assigned port 8080 | Keycloak conventionally uses 8080. Worker was on 8080; moved to 8090 to give Keycloak the standard port. kind extraPortMappings updated. Cluster recreation required. | `user` + `agent-reasoning` | 2026-03-24 |
+| 27 | `oidc-audience-mapper` broken in Keycloak 26.1.4 — use `oidc-hardcoded-claim-mapper` | `oidc-audience-mapper` configured correctly on client and scope does not produce `aud` claim in service account tokens in KC 26.1.4. `oidc-hardcoded-claim-mapper` with `claim.name=aud` works correctly. Audience added via dedicated `mcp-resource` default scope so all client tokens carry the audience regardless of optional tool scopes. | `empirical` | 2026-03-24 |
 | 9 | regulated_like_data and internal_business_sensitive categories excluded from Phase 0 corpus | No concrete entity types are enumerated for these categories in the interim model (spec §6.3). regulated_like_data requires custom recognizers for domain-specific identifiers (NPI, DEA, NHS). internal_business_sensitive is inherently tenant-specific and cannot be generically represented. Both categories are deferred pending taxonomy formalization. | `agent-reasoning` + `spec` §6 | 2026-03-24 |
 | 10 | Corpus uses IANA TEST-NET IPs, IRS-reserved SSN ranges, IANA example.com domains, Luhn-valid test card numbers, and 555-prefix phone numbers | Ensures all synthetic data values are unambiguously non-operational while still being format-valid for recognizer pattern matching. Follows briefing rules exactly. | `agent-reasoning` | 2026-03-24 |
 | 11 | Line-break evasion (edg-003) documented as expected false negative | SSNs split across newlines are a known regex recognizer limitation. Documenting baseline behavior rather than treating it as a scanner defect. Evasion-resistant scanning is a Phase 2+ concern. | `agent-reasoning` | 2026-03-24 |
@@ -199,7 +231,7 @@ DELIVERABLES="$PROJECT_ROOT/deliverables"
 | 15 | OpenAPI docs UI disabled in production worker image | Reduces attack surface. docs_url, redoc_url, and openapi_url are set to None. Local environments can re-enable via env var if needed. | `agent-reasoning` + `spec` §4.3 | 2026-03-24 |
 | 16 | /tmp mounted as memory-backed emptyDir in Helm chart | Read-only root filesystem is required by security policy but uvicorn and spaCy need writable temporary storage. Memory-backed emptyDir satisfies both constraints without writing to the node's disk. | `spec` §4.3 + `agent-reasoning` | 2026-03-24 |
 | 17 | Worker service type set to ClusterIP in production values; NodePort in local values | Worker must not be reachable from outside the cluster in production. Local dev uses NodePort with kind extraPortMappings so services are reachable on fixed localhost ports without port-forwarding. Port-forward approach was replaced because it required manual restart on pod rollover. | `spec` §4.3 + `agent-reasoning` | 2026-03-24 |
-| 18 | kind cluster created with extraPortMappings for fixed localhost ports | Avoids kubectl port-forward in local dev. Ports 4444 (Hydra public), 4445 (Hydra admin), 8080 (worker) are mapped via kind containerPort→hostPort. ory/hydra chart does not support nodePort field — Hydra services are patched post-deploy in setup-local.sh. | `agent-reasoning` | 2026-03-24 |
+| 18 | kind cluster extraPortMappings: host 8080→Keycloak (30880), host 8090→worker (30890), host 8000→MCP (30800) | Avoids kubectl port-forward in local dev. Ports fixed via kind-config.yaml extraPortMappings. All NodePorts now supported via Helm values; no kubectl patch required. Cluster must be recreated when mappings change. | `agent-reasoning` | 2026-03-24 |
 | 20 | MCP server uses the MCP Python SDK (`mcp`/`fastmcp`) not plain FastAPI | Full MCP protocol compliance from Phase 0. SDK handles tool registration, protocol framing, and message serialization. JWT middleware mounted on top of the SDK's FastAPI integration. | `user` | 2026-03-24 |
 | 21 | MCP server exposed on port 8000 (NodePort 30800) | Port 4444/4445/8080 already allocated. 8000 is the FastAPI/uvicorn convention and avoids conflict. kind-config.yaml and setup-local.sh updated. Cluster must be recreated to pick up the new extraPortMapping. | `user` | 2026-03-24 |
 | 22 | MCP server `/health` endpoint requires no auth | Kubernetes liveness/readiness probes cannot present Bearer tokens. Auth spec `tools:health.read` scope is a known deviation, documented as accepted for Phase 0. | `user` | 2026-03-24 |
@@ -213,6 +245,12 @@ DELIVERABLES="$PROJECT_ROOT/deliverables"
 |-------|-----------|------------|
 | Helm ConfigMap rendered `maxPayloadBytes` as `1.048576e+06` (scientific notation) causing worker startup failure | 1 | Added `int` filter to configmap.yaml template: `{{ .Values.config.maxPayloadBytes \| int \| quote }}` |
 | `presidio_analyzer.__version__` does not exist — ImportError on worker startup | 1 | Replaced with `importlib.metadata.version('presidio-analyzer')` in minimizer.py |
+| bitnami/keycloak Helm chart timeout — PostgreSQL subchart slow; `postgresql.enabled: false` rejected by chart validation | 1 | Abandoned bitnami chart entirely. Plain K8s Deployment + Service using `quay.io/keycloak/keycloak:26.1.4` with `start-dev --import-realm`. |
+| Keycloak readiness probe on `/realms/master` passes before `mcp-local` realm import completes — smoke test fires too early | 1 | Changed readiness probe path to `/realms/mcp-local`. Rollout status now blocks until realm import is complete. |
+| Stale `kubectl port-forward` process binding localhost:8080 — hijacks Keycloak's kind host port mapping | 1 | Identified orphaned `port-forward.sh` process (PID 210089–210091). Killed all instances. Process no longer respawns (script deleted). |
+| Issuer mismatch: token `iss=localhost:8080` vs discovery `issuer=keycloak.svc.cluster.local` — all tokens 401 | 1 | Added `ISSUER_URL` env var to MCP server configmap. `token_verifier.py` now uses `config.ISSUER_URL` for PyJWT issuer check instead of `discovery.get_issuer()`. Local values override to `http://localhost:8080/realms/mcp-local`. |
+| `oidc-audience-mapper` does not produce `aud` claim in KC 26.1.4 client credentials tokens | 2 | Replaced with `oidc-hardcoded-claim-mapper` on dedicated `mcp-resource` default scope. |
+| FastMCP `StreamableHTTPSessionManager` raises "Task group not initialized" — 500 on all MCP tool calls | 1 | Replaced `@app.on_event("startup")` with `asynccontextmanager` lifespan that enters `mcp._session_manager.run()` context before yielding. |
 
 ---
 
