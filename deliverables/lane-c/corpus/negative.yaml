@@ -1,0 +1,103 @@
+# Corpus: Negative Cases — Expected No Sensitivity Findings
+# These payloads should produce sensitivity_detected: false.
+# All content is generic, non-personal, and non-operational.
+
+- id: neg-001
+  description: Generic business memo with no personal data
+  payload: >
+    TO: All Staff
+    FROM: Operations Team
+    RE: Office Closure — Public Holiday
+
+    Please be advised that the office will be closed on the upcoming public holiday.
+    Normal business operations will resume the following working day.
+    For urgent matters, please refer to the on-call escalation process
+    documented in the internal knowledge base.
+
+    Thank you for your cooperation.
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    No names, contact data, or identifiers. Generic organizational communication.
+
+- id: neg-002
+  description: Technical document describing a system — no real IPs or names
+  payload: >
+    The ingestion pipeline accepts events on port 8443. Events are validated
+    against the JSON schema before forwarding to the processing queue.
+    The queue consumer scales horizontally based on queue depth.
+    All inter-service communication uses mutual TLS. Service discovery
+    is handled by the internal DNS resolver. No external internet access
+    is required for the core processing path.
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    Technical prose with no real identifiers. Port numbers and generic
+    architecture descriptions should not trigger sensitivity detection.
+
+- id: neg-003
+  description: Lorem ipsum paragraph
+  payload: >
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
+    tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam,
+    quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo
+    consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse
+    cillum dolore eu fugiat nulla pariatur.
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    Standard lorem ipsum filler text. No recognizable entities.
+    Some NER models attempt to tag Latin words — this tests suppression
+    of spurious matches on well-known non-sensitive text.
+
+- id: neg-004
+  description: Paragraph of numbers that are not sensitive — order quantities and product IDs
+  payload: >
+    Order summary: 3 units of PRD-10042, 12 units of PRD-20017, 5 units of PRD-30005.
+    Total items: 20. Batch reference: ORD-2026031-00472.
+    Warehouse location: BIN-A07-SHELF-3. Weight: 14.7 kg.
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    Numbers in inventory and logistics context. Product IDs, quantities, and
+    warehouse codes should not match financial or government identifier patterns.
+    Tests that numeric pattern recognizers do not over-trigger on structured
+    non-PII reference numbers.
+
+- id: neg-005
+  description: Paragraph with words that sound like names but are company or place names
+  payload: >
+    Meridian Solutions acquired Northern Bridge Analytics in Q3 of last year.
+    The combined entity will operate under the Apex Dynamics brand.
+    Regional operations are managed from the Pacific Rim office,
+    with support from the Atlantic Division team.
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    Capitalised multi-word phrases that resemble person names but refer to
+    organisations and geographic regions. Tests NER disambiguation between
+    ORG/LOC entities and PERSON entities. False positive risk is non-trivial —
+    'Northern Bridge', 'Apex Dynamics', 'Pacific Rim' may trigger PERSON matches
+    in some models. Flag as a known recognizer calibration concern.
+
+- id: neg-006
+  description: Empty string — edge case, should produce no findings
+  payload: ""
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    Empty input string. The scanner must handle this gracefully without
+    erroring. Result should be sensitivity_detected: false, decision: allow.
+    This tests the zero-length input boundary condition.

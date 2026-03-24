@@ -1,0 +1,134 @@
+# Corpus: Edge Cases and Adversarial Inputs
+# Boundary conditions, encoding challenges, and adversarial patterns.
+# All data is synthetic and non-operational.
+
+- id: edg-001
+  description: Payload at approximately the maximum size boundary using long neutral text
+  payload: >
+    The following is a long neutral document used to test payload size boundary behaviour.
+    It contains no sensitive data. The content repeats a benign technical description
+    to reach a substantial character count. This tests that the scanner handles large
+    inputs without truncating, erroring, or timing out prematurely.
+    System components include the ingestion pipeline, the validation layer,
+    the processing queue, the consumer workers, the result store, and the audit system.
+    Each component operates within defined resource limits. The ingestion pipeline
+    accepts structured JSON payloads over an authenticated HTTPS endpoint.
+    The validation layer enforces schema constraints, content-type rules, and size limits.
+    The processing queue smooths burst traffic and provides back-pressure.
+    Consumer workers are ephemeral and bounded by a short TTL. The result store
+    retains only metadata — no payload content is persisted. The audit system captures
+    request identifiers, caller identity, policy profile, latency, and outcome codes.
+    No payload data enters the audit system. All inter-service communication uses
+    mutual TLS with pinned certificates. Service discovery uses internal DNS.
+    Health checks run on each component every 30 seconds. Alerting fires
+    when error rates exceed 1% over a 5-minute window or when queue depth
+    exceeds the configured high-watermark. These operational parameters are
+    reviewed quarterly and updated as load profiles change. The deployment model
+    uses Helm charts throughout — local, staging, and production environments
+    differ only in values files. Image versions are pinned and scanned before promotion.
+    Dependency manifests are reviewed on each release cycle. This document
+    contains no names, contact data, financial identifiers, government identifiers,
+    or credential patterns. It is intended solely as a size-boundary test fixture.
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    Long neutral text approaching but not exceeding the expected max payload size.
+    Validates scanner handles large input cleanly. Exact character count will depend
+    on deployed max_payload_size configuration.
+
+- id: edg-002
+  description: Payload with unicode and non-ASCII characters alongside no sensitive data
+  payload: >
+    Internationalisierung und Lokalisierung sind wichtige Aspekte moderner Systeme.
+    Le système doit supporter les caractères accentués: é, è, ê, ç, à, ù.
+    日本語のテキストも含めます。これは機密情報ではありません。
+    Текст на русском языке: Это тестовое сообщение без личных данных.
+    العربية: هذا نص اختباري بدون بيانات شخصية.
+    Emojis: ✅ 🔒 📋 (non-semantic use in document markers)
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    Tests tokenization and encoding robustness with multi-byte unicode characters.
+    German, French, Japanese, Russian, and Arabic scripts included.
+    No PII present. Verifies that unicode text does not cause scanner errors
+    and does not produce false positive matches.
+
+- id: edg-003
+  description: Sensitive data split across a line break
+  payload: "Patient SSN is 000-23-\n4567. Please verify before processing."
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    The SSN '000-23-4567' is split by a newline character between '000-23-'
+    and '4567'. Most regex-based recognizers operate on a single-line or
+    token-boundary basis and will NOT detect this as an SSN.
+    Expected result is no detection — this is intentionally an evasion-adjacent
+    edge case. If Presidio does detect it, the expected categories would be
+    [government_identifier] at critical severity.
+    Documenting expected_sensitivity_detected: false to establish the
+    baseline for line-break evasion behavior in Phase 0.
+
+- id: edg-004
+  description: Low-confidence partial phone number that does not meet full format
+  payload: "Call us back at 867-5309 when you have a moment."
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    867-5309 is a 7-digit local number format, not a full E.164 or NANP number.
+    Presidio PHONE_NUMBER recognizer may or may not detect this depending on
+    confidence threshold settings. Expected result is no detection at default
+    thresholds. If detected, expected categories would be [contact_data] at medium.
+    This tests low-confidence partial match suppression.
+
+- id: edg-005
+  description: Same entity appearing 10+ times — tests repetition and count behavior
+  payload: >
+    Email list export:
+    test01@example.com, test02@example.com, test03@example.com,
+    test04@example.com, test05@example.com, test06@example.com,
+    test07@example.com, test08@example.com, test09@example.com,
+    test10@example.com, test11@example.com, test12@example.com.
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: high
+  expected_decision: block
+  notes: >
+    Twelve instances of the EMAIL_ADDRESS entity type.
+    Tests that the scanner counts all occurrences and does not stop at the
+    first match. confidence_summary.findings_count should be >= 12.
+    High severity because bulk contact data export is high-risk even without
+    other identifier types present.
+
+- id: edg-006
+  description: Sensitive data embedded in a code block — JSON containing an email
+  payload: |
+    The following is a Python dict literal from a data processing script:
+
+    user_record = {
+        "user_id": "usr-00042",
+        "email": "grace.codetest@example.com",
+        "role": "analyst",
+        "active": True
+    }
+
+    This record is used in integration tests only.
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: medium
+  expected_decision: flag
+  notes: >
+    Email address appears inside a code block / Python dict literal.
+    Tests that the scanner detects PII regardless of surrounding syntax context.
+    grace.codetest@example.com uses an IANA-reserved domain.
+    The scanner should not be fooled by code formatting into treating the
+    email as a non-entity.

@@ -1,0 +1,65 @@
+# Corpus: Direct Identifiers
+# Entity types covered: PERSON, DATE_TIME, AGE
+# All names are clearly fictional. No real personal data.
+
+- id: dir-001
+  description: Full name only — no other context
+  payload: "Jane Testperson"
+  expected_sensitivity_detected: true
+  expected_categories:
+    - direct_identifier
+  expected_severity_band: low
+  expected_decision: flag
+  notes: Isolated name. Low severity on its own — context determines risk.
+
+- id: dir-002
+  description: Full name embedded in a sentence
+  payload: "Please forward this report to John Synthetic before the end of the week."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - direct_identifier
+  expected_severity_band: low
+  expected_decision: flag
+  notes: Name appears in natural prose context.
+
+- id: dir-003
+  description: Date of birth only
+  payload: "Date of birth: 1985-06-15"
+  expected_sensitivity_detected: true
+  expected_categories:
+    - direct_identifier
+  expected_severity_band: medium
+  expected_decision: flag
+  notes: DOB without name. Medium because DOB alone is a quasi-identifier.
+
+- id: dir-004
+  description: Age combined with a fictional name
+  payload: "Alice Fakename, age 34, is being assessed for the programme."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - direct_identifier
+  expected_severity_band: medium
+  expected_decision: flag
+  notes: Name + age together increases re-identification risk.
+
+- id: dir-005
+  description: Multiple direct identifiers in one payload — name, DOB, and age
+  payload: "Patient: Robert Testington. Date of birth: 1972-11-03. Age: 51."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - direct_identifier
+  expected_severity_band: high
+  expected_decision: block
+  notes: Three co-located direct identifiers significantly raise severity.
+
+- id: dir-006
+  description: Name-like string that is a product name, not a person
+  payload: "The Aurora Pro X is our latest enterprise networking device."
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    'Aurora Pro X' resembles a capitalised name phrase but is a product name.
+    Presidio may produce a false positive here — a known recognizer gap for
+    NER models that conflate brand names with PERSON entities. Flag for review.

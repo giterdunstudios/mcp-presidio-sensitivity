@@ -1,0 +1,86 @@
+# Corpus: Contact Data
+# Entity types covered: EMAIL_ADDRESS, PHONE_NUMBER, IP_ADDRESS, URL
+# All emails use example.com / test.example / invalid.test domains.
+# All IPs are from IANA TEST-NET ranges: 192.0.2.x, 198.51.100.x, 203.0.113.x.
+# No real personal contact information.
+
+- id: con-001
+  description: Email address only — no other context
+  payload: "j.testperson@example.com"
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: medium
+  expected_decision: flag
+  notes: >
+    Isolated email address. example.com is IANA-reserved for documentation.
+    Medium severity — contact data enables direct communication but is
+    lower risk than financial or government identifiers in isolation.
+
+- id: con-002
+  description: US phone number only
+  payload: "Customer callback number: (555) 867-5309"
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: medium
+  expected_decision: flag
+  notes: >
+    555 numbers are reserved in the North American Numbering Plan for fictional use.
+    No real person can hold this number.
+
+- id: con-003
+  description: IP address from IANA TEST-NET range in isolation
+  payload: "The request originated from 192.0.2.47"
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: low
+  expected_decision: flag
+  notes: >
+    192.0.2.0/24 is the IANA TEST-NET-1 range (RFC 5737), never routed publicly.
+    An IP address is low severity on its own but may be medium/high combined
+    with user identity in a log correlation context.
+
+- id: con-004
+  description: URL with no other sensitive data
+  payload: "See the documentation at https://docs.example.com/api/v2/reference"
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    URL on example.com domain. No PII embedded in the URL.
+    Low severity — URL alone is typically not sensitive unless it
+    contains authentication tokens or embedded user data.
+
+- id: con-005
+  description: Email and phone combined in a contact record
+  payload: >
+    Contact: alice.fakename@test.example
+    Mobile: +1 (555) 234-5678
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: medium
+  expected_decision: flag
+  notes: >
+    Two contact data items co-located. Severity remains medium but the
+    combination improves an attacker's ability to reach a subject directly.
+
+- id: con-006
+  description: IP address appearing in a technical system log context
+  payload: >
+    2026-03-24T08:42:11Z INFO  [auth-service] Login attempt from 203.0.113.15
+    request_id=a1b2c3d4 user_agent="Mozilla/5.0 (X11; Linux x86_64)" status=401
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: low
+  expected_decision: flag
+  notes: >
+    203.0.113.0/24 is IANA TEST-NET-3 (RFC 5737). In a real system log this
+    would be the originating client IP — low sensitivity in isolation but
+    potentially medium if combined with user identity in the same log line.
+    This case tests recognizer behavior in structured log-line format.

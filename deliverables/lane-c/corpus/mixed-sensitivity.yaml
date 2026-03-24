@@ -1,0 +1,91 @@
+# Corpus: Mixed-Sensitivity Payloads
+# Multi-entity payloads spanning multiple categories.
+# Tests combined severity escalation and multi-category detection.
+# All data is synthetic and non-operational.
+
+- id: mix-001
+  description: Name + email + phone — direct identifier plus contact data
+  payload: >
+    Support ticket filed by Carol Synthname.
+    Email: carol.synthname@example.com
+    Phone: (555) 123-4567
+  expected_sensitivity_detected: true
+  expected_categories:
+    - direct_identifier
+    - contact_data
+  expected_severity_band: high
+  expected_decision: block
+  notes: >
+    Three distinct PII fields. Name + email + phone together constitute
+    a full contact record — severity escalates to high when categories combine.
+
+- id: mix-002
+  description: Credit card number plus name — financial and direct identifier
+  payload: "Please charge card 4111111111111111 to the account of Derek Testington."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - financial_identifier
+    - direct_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    Card number is Luhn-valid Visa test number.
+    Name links the card to a named individual — compound escalation to critical.
+
+- id: mix-003
+  description: SSN plus bank account number — government and financial
+  payload: >
+    Beneficiary SSN: 000-34-5678
+    Bank account: 987654321098
+    Routing number: 021000089
+  expected_sensitivity_detected: true
+  expected_categories:
+    - government_identifier
+    - financial_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    Government identifier plus financial identifier in one payload.
+    This is a high-value combination for identity theft scenarios.
+    Both categories independently warrant block; combined severity is critical.
+
+- id: mix-004
+  description: Rich paragraph with 4+ entity types
+  payload: >
+    Onboarding record for new employee Frank Fakename (SSN: 999-11-2233).
+    Contact: frank.fakename@example.com | +1 (555) 987-6543.
+    Direct deposit account: 112233445566, routing 021000089.
+    Start date: 2026-04-01.
+  expected_sensitivity_detected: true
+  expected_categories:
+    - direct_identifier
+    - government_identifier
+    - contact_data
+    - financial_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    Covers PERSON (Frank Fakename), US_SSN (999-11-2233),
+    EMAIL_ADDRESS, PHONE_NUMBER, US_BANK_NUMBER, and DATE_TIME.
+    Minimum four entity types detected. Maximum severity warranted.
+
+- id: mix-005
+  description: High-volume payload with repeated entities — tests counting behavior
+  payload: >
+    Batch export: alice@example.com, bob@example.com, carol@example.com,
+    derek@test.example, erin@invalid.test, frank@example.com,
+    george@example.com, harriet@test.example, ivan@example.com,
+    jane@example.com, kurt@invalid.test, lisa@example.com.
+    Contact phones: (555) 100-0001, (555) 100-0002, (555) 100-0003,
+    (555) 100-0004, (555) 100-0005, (555) 100-0006.
+  expected_sensitivity_detected: true
+  expected_categories:
+    - contact_data
+  expected_severity_band: high
+  expected_decision: block
+  notes: >
+    12 email addresses and 6 phone numbers in a single payload.
+    Tests that the scanner correctly counts multiple occurrences of the
+    same entity type and does not stop at the first match.
+    High volume of contact data raises severity beyond what a single item warrants.
+    confidence_summary.findings_count should be >= 18.

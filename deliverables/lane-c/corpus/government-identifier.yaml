@@ -1,0 +1,90 @@
+# Corpus: Government Identifiers
+# Entity types covered: US_SSN, US_PASSPORT, US_DRIVER_LICENSE
+# All SSNs use IRS-reserved invalid ranges (000-xx-xxxx or 999-xx-xxxx).
+# All passport and driver license numbers are clearly synthetic.
+
+- id: gov-001
+  description: SSN in standard hyphenated format, standalone
+  payload: "000-12-3456"
+  expected_sensitivity_detected: true
+  expected_categories:
+    - government_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    000-xx-xxxx prefix is reserved by the IRS as invalid.
+    This is an explicitly unassignable SSN, safe to use as a test value.
+
+- id: gov-002
+  description: SSN embedded in a sentence
+  payload: "Please update the record for SSN 999-78-0001 to reflect the new address."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - government_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    999-xx-xxxx is a second IRS-reserved invalid range.
+    In-sentence context — Presidio SSN recognizer should detect with high confidence
+    given the 'SSN' label nearby.
+
+- id: gov-003
+  description: SSN in dense paragraph without label
+  payload: >
+    The applicant submitted their documentation package on Thursday.
+    Reference number 000-45-6789 appears on all correspondence.
+    No further information was provided at this time.
+  expected_sensitivity_detected: true
+  expected_categories:
+    - government_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    No 'SSN' label. Recognizer must rely on pattern matching alone.
+    This tests unlabeled detection sensitivity.
+
+- id: gov-004
+  description: US passport number in a travel record context
+  payload: "Passport number: X12345678. Issued: 2022-01-15. Expiry: 2032-01-14."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - government_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    X12345678 follows US passport format (one letter + 8 digits).
+    Synthetic — no real passport uses this number.
+    Presidio US_PASSPORT recognizer targets this format.
+
+- id: gov-005
+  description: US driver license number in a KYC workflow note
+  payload: >
+    KYC verification completed. State: CA. Driver license number: D1234567.
+    Verification date: 2026-03-20.
+  expected_sensitivity_detected: true
+  expected_categories:
+    - government_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    D1234567 is a synthetic CA-format driver license number.
+    Presidio US_DRIVER_LICENSE uses state-aware pattern matching.
+    'State: CA' context may improve recognizer confidence.
+
+- id: gov-006
+  description: Mixed government ID payload — SSN and passport in same document
+  payload: >
+    Employee onboarding record.
+    SSN: 000-67-8901
+    Passport: Y98765432
+    Hire date: 2026-02-01
+  expected_sensitivity_detected: true
+  expected_categories:
+    - government_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: >
+    Two critical government identifiers in one payload.
+    Severity remains critical — co-location of multiple government IDs
+    would be a strong block signal in any policy model.
+    Y98765432 follows US passport format (letter + 8 digits).

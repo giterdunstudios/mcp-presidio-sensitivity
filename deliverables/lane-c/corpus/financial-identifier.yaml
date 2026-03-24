@@ -1,0 +1,78 @@
+# Corpus: Financial Identifiers
+# Entity types covered: CREDIT_CARD, IBAN_CODE, US_BANK_NUMBER
+# All card numbers are Luhn-valid test numbers. No real financial data.
+
+- id: fin-001
+  description: Credit card number in plain text
+  payload: "Please process payment for card 4111111111111111 expiry 12/28"
+  expected_sensitivity_detected: true
+  expected_categories:
+    - financial_identifier
+  expected_severity_band: high
+  expected_decision: block
+  notes: >
+    4111111111111111 is a well-known Luhn-valid Visa test number.
+    Not a real card. Expiry is a future test date.
+
+- id: fin-002
+  description: Credit card with CVV in a support transcript context
+  payload: "Customer provided card number 5500005555555559 CVV 123 for verification."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - financial_identifier
+  expected_severity_band: high
+  expected_decision: block
+  notes: >
+    5500005555555559 is a Luhn-valid Mastercard test number.
+    CVV present alongside card number escalates severity.
+
+- id: fin-003
+  description: Synthetic IBAN in a payment instruction
+  payload: "Please transfer funds to account GB00TEST12345678901234 by Friday."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - financial_identifier
+  expected_severity_band: high
+  expected_decision: block
+  notes: >
+    GB00TEST12345678901234 uses the TEST sort code placeholder format.
+    Structurally resembles a valid UK IBAN but uses 'TEST' to mark it non-operational.
+
+- id: fin-004
+  description: US bank account number in a memo context
+  payload: "Wire transfer recipient account: 123456789012. Routing: 021000089."
+  expected_sensitivity_detected: true
+  expected_categories:
+    - financial_identifier
+  expected_severity_band: high
+  expected_decision: block
+  notes: >
+    Account number is a synthetic 12-digit value.
+    Routing number 021000089 is a publicly known test routing number
+    associated with no real account. Presidio US_BANK_NUMBER recognizer
+    may struggle with standalone account numbers without routing context.
+
+- id: fin-005
+  description: Mixed financial payload — credit card and IBAN together
+  payload: >
+    The cardholder used Visa card 4111111111111111 for the initial charge.
+    Refund will be sent to IBAN GB00TEST12345678901234.
+  expected_sensitivity_detected: true
+  expected_categories:
+    - financial_identifier
+  expected_severity_band: critical
+  expected_decision: block
+  notes: Two distinct financial identifier types in one payload. Combined severity is critical.
+
+- id: fin-006
+  description: Long number that looks financial but is a product SKU
+  payload: "Order reference SKU-4111222233334444 has shipped. Tracking number 1234567890123456."
+  expected_sensitivity_detected: false
+  expected_categories: []
+  expected_severity_band: low
+  expected_decision: allow
+  notes: >
+    SKU prefix and 'Order reference' context disambiguate this from a card number.
+    4111222233334444 is NOT Luhn-valid, so card recognizers should reject it.
+    Tracking number format differs from PAN format. Potential false positive risk
+    if the recognizer relies on pattern only without Luhn check.
