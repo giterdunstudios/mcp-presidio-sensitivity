@@ -31,12 +31,14 @@
 | 4 | Lean council: 3 core roles + optional Detection/Data Researcher |
 | 5 | Priority stack: correctness → security → reliability → expansion |
 | 6 | Caller is agents and services only |
+| 7 | Helm as deployment model from Phase 0 |
+| 8 | Hydra (ORY) as Authorization Server |
 
 ### What's Next
-- [ ] Confirm Presidio recognizer coverage against target data types (synthetic test)
+- [ ] Confirm Docker Desktop with Kubernetes enabled (WSL2)
+- [ ] Write `values.local.yaml` — local Helm stack (Hydra + MCP server + Presidio worker)
+- [ ] Deploy Hydra locally via Helm, confirm JWKS endpoint and token issuance
+- [ ] Confirm Presidio recognizer coverage (synthetic test)
 - [ ] Produce architectural design document
-- [ ] Confirm tool schema — input and output contracts
-- [ ] Build minimal worker prototype (Phase 0)
-- [ ] Build synthetic test corpus (Phase 0)
 
 ---

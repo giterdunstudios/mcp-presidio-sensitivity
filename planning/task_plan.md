@@ -37,7 +37,8 @@ Presidio-backed scan, and returns only a bounded summary result — never the pa
 ```
 
 **Caller:** Agents and services only. No human invokes this tool directly in production.
-**Auth:** Service-to-service only.
+**Auth:** OAuth client credentials (JWT bearer assertions). Hydra is the Authorization Server.
+**Deployment:** Helm charts throughout — local (Docker Desktop / Kubernetes), staging, production.
 **Presidio:** Detection tool only — not the security boundary. The orchestrator owns trust.
 
 ---
@@ -48,20 +49,29 @@ Presidio-backed scan, and returns only a bounded summary result — never the pa
 **Status:** `in_progress`
 **Goal:** Validate architecture, confirm Presidio fit for target data types, establish
 the minimized output contract. Produce enough to submit synthetic text and receive
-a bounded result.
+a bounded result through the full authenticated path.
 **Steps:**
 - [x] Define ways of working and council structure
 - [x] Scaffold planning files
+- [ ] Confirm Docker Desktop with Kubernetes enabled (WSL2)
+- [ ] Write local Helm values file (`values.local.yaml`) — Hydra + MCP server + Presidio worker
+- [ ] Deploy Hydra locally via Helm — confirm token issuance and JWKS endpoint
+- [ ] Configure a test client (service account + client credentials) in Hydra
 - [ ] Confirm Presidio recognizer coverage against target data types (synthetic test)
 - [ ] Produce architectural design document
 - [ ] Confirm tool schema — input and output contracts
-- [ ] Build minimal worker prototype
+- [ ] Build minimal worker prototype (Helm chart, ephemeral worker, embedded Presidio)
 - [ ] Build synthetic test corpus
-- [ ] Confirm failure paths are understood
+- [ ] Wire MCP server to Hydra — validate 401/403/200 flows end-to-end
+- [ ] Confirm failure paths do not leak payload data
 **Exit Criteria:**
-- Team can submit synthetic text and receive a bounded result
-- No raw payload is returned in any prototype response
-- Failure paths are documented and understood
+- Full local stack running via Helm (`helm install` or `helm upgrade`)
+- Test client can obtain a token from Hydra and invoke `classify_payload_sensitivity`
+- Valid token + correct scope → bounded result returned
+- Invalid/missing token → 401 returned
+- Valid token + wrong scope → 403 returned
+- No raw payload returned in any response including error paths
+- Failure paths documented and understood
 
 ---
 
@@ -178,6 +188,8 @@ DELIVERABLES="$PROJECT_ROOT/deliverables"
 | 4 | Lean council: 3 core roles + optional Detection/Data Researcher | Project complexity at MVP does not justify more. Concerns not yet large enough to split. Anti-sprawl rule applied. | `user` + `agent-reasoning` | Session 4 |
 | 5 | Priority stack: correctness/bounded behavior → security → reliability → expansion | Security is non-negotiable. No human catches a wrong answer at invocation time. Speed is valid but never top priority. | `user` + `spec` §4 | Session 4 |
 | 6 | Caller is agents and services only — service-to-service auth | Tool is invoked programmatically in agentic workflows. No human invokes directly in production. Developer use is for integration testing only. | `user` | Session 4 |
+| 7 | Helm as deployment model from Phase 0 | WSL2 with Docker Desktop supports Helm. Starting with Helm means local environment mirrors production from day one — isolation, network policies, and resource limits are real and tested, not retrofitted. Environment promotion is a values file swap, not a runtime model change. | `user` | Session 4 |
+| 8 | Hydra (ORY) as Authorization Server | Purpose-built for machine-to-machine OAuth client credentials. Lighter than Keycloak. No UI overhead. Official Helm chart available. Directly maps to production OAuth AS configuration for service-to-service flows. JWT bearer assertions preferred over client secrets per auth spec §3. | `user` + `agent-reasoning` | Session 4 |
 
 ---
 

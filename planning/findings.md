@@ -141,6 +141,36 @@ The full classification taxonomy is deferred until Phase 1 generates empirical d
 | Worker runtime | Short-lived container, TTL bounded, memory-backed storage | `spec` §3.4 |
 | Classification taxonomy | Deferred — placeholder model in use | `spec` §6 |
 | Caller type | Agents and services only | `user` Session 4 |
+| Auth model | OAuth client credentials, JWT bearer assertions. Hydra as AS. | `user` + `auth-spec` §3 |
+| Deployment model | Helm from Phase 0. `values.local.yaml` for local overrides. | `user` Session 4 |
+
+## Auth Architecture
+
+The MCP auth engineering spec defines a two-component system:
+
+```
+[Agent / Service]
+    |
+    v (OAuth client credentials — JWT bearer assertion)
+[Hydra AS]  ←  issues tokens, hosts JWKS
+    |
+    v (Bearer token)
+[MCP Server]        ← validates token, checks scopes, trust boundary
+    |
+    v (internal context only — no token passthrough)
+[Presidio Scanner]  ← no auth, private network only
+```
+
+### Auth spec key rules
+- MCP server is the OAuth resource server and trust boundary
+- Never pass the upstream bearer token to the Presidio scanner
+- Backend (Presidio) must not be reachable from untrusted network paths
+- Scope model: narrow per-tool scopes (`tools:classify.submit`, `tools:health.read`)
+- Internal context passed to backend: `caller_type`, `subject_id`, `authorized_action`, `correlation_id`
+
+### Auth spec reference
+See `shared/private/mcp_auth_engineering_spec.md` for full functional requirements,
+component breakdown, acceptance criteria, and test plan.
 
 ---
 
