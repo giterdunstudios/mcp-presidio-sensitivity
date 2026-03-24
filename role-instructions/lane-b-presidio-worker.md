@@ -246,6 +246,14 @@ These come directly from spec §4.3 and findings.md. Violations block Security/P
 | `worker-design-notes.md` | `deliverables/lane-b/` | Design decisions made, any deviations from spec, recognizer coverage notes |
 | `security-checklist.md` | `deliverables/lane-b/` | Self-review against each item in spec §4.6 |
 
+Write all files to disk. **Do not commit or push — the coordinator handles all git operations.**
+
+When all files are written, notify the coordinator by ending your session with a clear summary of:
+- All files written and their paths
+- All decisions made (for logging to `task_plan.md`)
+- Definition of done checklist status
+- Any deviations from spec to flag for Security/Privacy Lead review
+
 ---
 
 ## Definition of done
@@ -257,8 +265,8 @@ These come directly from spec §4.3 and findings.md. Violations block Security/P
 - [ ] Unsupported content type returns `UNSUPPORTED_CONTENT_TYPE`
 - [ ] Dockerfile uses non-root user
 - [ ] Helm chart deploys cleanly to `mcp-presidio` namespace
-- [ ] `security-checklist.md` completed and committed
-- [ ] All decisions logged in `task_plan.md`
+- [ ] `security-checklist.md` completed and written to disk
+- [ ] All decisions noted in your completion summary for the coordinator to log
 
 ---
 

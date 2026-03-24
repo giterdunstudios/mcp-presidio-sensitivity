@@ -117,12 +117,18 @@ Expected: error response — scope not allowed for this client
 
 ## Deliverables
 
-Produce these files and commit them to the repo:
+Produce these files and write them to disk. **Do not commit or push — the coordinator handles all git operations.**
 
 | File | Location | Contents |
 |------|----------|----------|
 | `hydra-config-report.md` | `deliverables/lane-a/` | What was configured, commands run, results observed, any deviations from plan |
 | `token-validation-report.md` | `deliverables/lane-a/` | Decoded token claims, JWKS response, confirmation of all 5 steps passing |
+
+When all files are written, notify the coordinator by ending your session with a clear summary of:
+- All files written and their paths
+- All decisions made (for logging to `task_plan.md`)
+- Definition of done checklist status
+- Any issues or deviations to flag
 
 ---
 
@@ -143,8 +149,8 @@ Produce these files and commit them to the repo:
 - [ ] Token requested and received with correct claims
 - [ ] JWKS endpoint returns signing key
 - [ ] Wrong-scope request returns an error
-- [ ] Both deliverable documents committed to repo
-- [ ] Any decisions logged in `task_plan.md`
+- [ ] Both deliverable documents written to disk
+- [ ] Any decisions noted in your completion summary for the coordinator to log
 
 ---
 

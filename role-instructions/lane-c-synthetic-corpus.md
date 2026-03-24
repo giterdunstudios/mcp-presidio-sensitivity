@@ -183,6 +183,14 @@ Must include:
 | `corpus/edge-cases.yaml` | `deliverables/lane-c/` |
 | `corpus-coverage-report.md` | `deliverables/lane-c/` |
 
+Write all files to disk. **Do not commit or push — the coordinator handles all git operations.**
+
+When all files are written, notify the coordinator by ending your session with a clear summary of:
+- All files written and their paths
+- Total test case count per file
+- Any decisions made
+- Definition of done checklist status
+
 ### `corpus-coverage-report.md` must contain:
 - Total test case count
 - Count per category
@@ -197,8 +205,8 @@ Must include:
 - [ ] All 8 corpus files produced with minimum case counts met
 - [ ] No real personal data, real credentials, or real sensitive information in any file
 - [ ] All IDs unique across the corpus
-- [ ] `corpus-coverage-report.md` completed and committed
-- [ ] All files committed to repo
+- [ ] `corpus-coverage-report.md` completed and written to disk
+- [ ] Completion summary provided to coordinator for git commit
 
 ---
 
