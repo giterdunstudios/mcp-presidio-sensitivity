@@ -341,11 +341,17 @@ All decisions are recorded in `task_plan.md` under the Decision Log section.
 
 ## 9. Open questions
 
-These must be resolved before Stage 2 work deepens. No agent or contributor should proceed past Stage 1 while these remain open.
+All Stage 1 open questions are resolved. No blockers on Stage 2.
 
-| # | Question | Why it matters | Owner |
-|---|----------|----------------|-------|
-| 1 | Who is the caller? Internal AI workflow, developer-facing API, or enterprise system? | Shapes the API contract, authentication model, and whether the Integration / API Lead split is needed now or later | Product / Scope Lead |
+| # | Question | Resolution |
+|---|----------|------------|
+| 1 | Who is the caller? | **Agents and services only.** This tool is invoked programmatically by AI agents or automated services that need to evaluate whether data they are working with is potentially sensitive before proceeding. No human invokes this tool directly in production. Developer invocation is for integration testing only. |
+
+### Implications of this decision
+
+- **Auth model:** service-to-service only. No user-scoped credentials in production.
+- **API contract:** optimized for programmatic consumption. No interactive affordances required.
+- **No human in the loop at invocation time.** The agent acts on the result directly. This reinforces correctness and bounded behavior as the top priority — a wrong answer has no human catch before the downstream decision executes.
 
 ---
 
