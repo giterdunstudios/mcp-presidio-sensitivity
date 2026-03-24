@@ -1,0 +1,10 @@
+hydra:
+  dev: true
+  config:
+    dsn: memory
+    urls:
+      self:
+        issuer: http://hydra.mcp-presidio.svc.cluster.local:4444
+    secrets:
+      system:
+        - local-dev-secret-change-in-prod
