@@ -8,3 +8,5 @@ hydra:
     secrets:
       system:
         - local-dev-secret-change-in-prod
+    strategies:
+      access_token: jwt
