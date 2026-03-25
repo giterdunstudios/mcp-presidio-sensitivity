@@ -32,10 +32,29 @@ from models import ErrorResponse, ScanRequest, ScanResponse
 # Logging — structured, no payload content
 # ---------------------------------------------------------------------------
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+import json as _json
+import time as _time
+
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        doc: dict = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S") + "Z",
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        for key in ("scan_id", "decision", "max_severity_band", "findings_count",
+                    "workflow_id", "policy_profile", "detector_version"):
+            if key in record.__dict__:
+                doc[key] = record.__dict__[key]
+        return _json.dumps(doc)
+
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_JsonFormatter())
+logging.root.setLevel(logging.INFO)
+logging.root.addHandler(_handler)
 logger = logging.getLogger("presidio-worker")
 
 # ---------------------------------------------------------------------------
@@ -176,6 +195,11 @@ async def scan(request: Request) -> JSONResponse:
     # ------------------------------------------------------------------
     # Analysis — payload is used here and must not leak beyond this block
     # ------------------------------------------------------------------
+    workflow_id = scan_request.request_metadata.workflow_id if scan_request.request_metadata else None
+    logger.info(
+        "scan started",
+        extra={"scan_id": str(scan_id), "workflow_id": workflow_id or ""},
+    )
     try:
         engine = get_engine(min_score_threshold=config.MIN_SCORE_THRESHOLD)
         findings = engine.analyze(

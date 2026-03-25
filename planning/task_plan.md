@@ -88,27 +88,42 @@ Items carried in from Phase 0 — already done:
 
 **Build order:**
 
-**Stream 1 — Classification calibration (quick wins)**
-- [ ] Fix DATE_TIME severity: standalone date/time references should not reach `high` severity; reclassify to `low` with no category mapping unless co-occurring with another identifier
-- [ ] Lock exact dependency versions: generate `requirements.lock.txt` via `pip-compile` for both images; update Dockerfiles to install from lock file
-- [ ] Run `pip-audit` against lock files as part of build; fail build on high-severity CVEs
+**Implementation order (enforced):**
+Structured logging → Audit trail → OTel → Prometheus/Grafana.
+Audit trail must not wait for OTel; it uses `trace_id = correlation_id` fallback until OTel lands.
+Stream 3 must be specced before any Stream 3 work begins.
 
-**Stream 2 — Audit trail (no payload persistence)**
-- [ ] Define audit record schema: `scan_id`, `caller_subject`, `correlation_id`, `decision`, `max_severity_band`, `matched_categories`, `findings_count`, `policy_profile`, `detector_version`, `timestamp` — no payload fields
+**Stream 1 — Classification calibration** `complete`
+- [x] Fix DATE_TIME severity: standalone date/time references reclassified — removed from `ENTITY_TO_CATEGORY`; falls through to generic medium path
+- [x] Lock exact dependency versions: `requirements.lock.txt` generated via `pip-compile` for both images; Dockerfiles updated to install from lock file
+- [x] Run `pip-audit` against lock files via script step; CVE-2026-4539 risk-accepted and documented in `.pip-audit-ignore`
+
+**Stream 2 — Audit trail** `not_started`
+- [ ] Write engineering spec before implementation — spec: `planning/audit-trail-spec.md`
+- [ ] Audit record schema: `scan_id`, `trace_id` (OTel), `caller_subject`, `correlation_id`, `decision`, `max_severity_band`, `matched_categories`, `findings_count`, `policy_profile`, `detector_version`, `timestamp` — no payload fields; `trace_id` provided by OTel instrumentation (Stream 4)
 - [ ] Write audit record to append-only structured log on every completed scan (in MCP server, after worker response received)
 - [ ] Audit records must be written even when the scan result is `block`
 - [ ] Confirm audit log does not contain payload content (add to security checklist)
 
-**Stream 3 — Operational hardening**
-- [ ] Explicit per-scan timeout: add configurable timeout (default 10s) to `call_worker()` in `backend/worker_client.py`; return `SCAN_TIMEOUT` error on breach
-- [ ] K8s NetworkPolicy: worker accepts inbound only from MCP server pod label
-- [ ] K8s NetworkPolicy: MCP server egress restricted to Keycloak service + worker service
-- [ ] Rate limiting: token-bucket per `caller_subject` on MCP server (fastapi-limiter or SlowAPI); configurable via values.yaml
+**Stream 3 — Operational hardening** `not_started`
+- [ ] Write engineering spec before implementation — spec: `planning/operational-hardening-spec.md` (created)
+- [ ] Scan timeout: rename error code to `SCAN_TIMEOUT` for httpx `TimeoutException`; change default from 30s to 10s (`WORKER_TIMEOUT_SECONDS`)
+- [ ] K8s NetworkPolicy: worker accepts ingress only from MCP server pod label; deny all other ingress
+- [ ] K8s NetworkPolicy: MCP server egress restricted to worker service + Keycloak service + DNS; deny all other egress
+- [ ] Rate limiting: token-bucket per `caller_subject` via SlowAPI (no Redis dependency); configurable via `values.yaml`
 
-**Stream 4 — Observability**
+**Stream 4 — Observability** `not_started`
+
+- [ ] Structured logging alignment: unify both services to OTel-aligned JSON schema, enforce log level policy, codify sensitivity rules — spec: `planning/structured-logging-spec.md`
+- [ ] OpenTelemetry distributed tracing — spec: `planning/otel-spec.md`; decisions captured below
+  - Collector: Jaeger (in-cluster, Helm-deployed alongside MCP server and worker)
+  - Propagation: W3C `traceparent` header — injected by `call_worker()` on outbound requests, extracted by worker on inbound; replaces body-field correlation for cross-service tracing
+  - Instrumentation: auto (`opentelemetry-instrumentation-fastapi`, `opentelemetry-instrumentation-httpx`) for HTTP spans; one manual span around `engine.analyze()` in the worker to capture Presidio CPU time and attach scan business attributes (`scan_id`, `decision`, `findings_count`, `entity_types`)
+  - `trace_id` from active OTel span flows into structured log records and audit trail records (Stream 2 depends on this)
+  - Grafana: add Jaeger data source; trace/metric correlation via Prometheus exemplars
 - [ ] Prometheus metrics on MCP server: request count by auth decision, scan count by decision/severity band, error count by error code, latency histogram
 - [ ] `/metrics` endpoint — exempt from auth, restricted to cluster-internal access via NetworkPolicy
-- [ ] Grafana dashboard scaffold: auth decisions, scan volume, error rates, latency p50/p99
+- [ ] Grafana dashboard scaffold: auth decisions, scan volume, error rates, latency p50/p99; Jaeger configured as data source alongside Prometheus
 
 **Exit Criteria:**
 - Supported content types validated and enforced (already passing)
@@ -119,9 +134,11 @@ Items carried in from Phase 0 — already done:
 - Authenticated caller invokes successfully (already passing)
 - Unauthorized caller is rejected (already passing)
 - Every completed scan emits an audit record with no payload content
+- Every audit record includes `trace_id` linking to the Jaeger trace for that scan
 - Network policy restricts worker access to MCP server only
 - Rate limiting prevents scan abuse per caller
 - Prometheus metrics exported and documented
+- Grafana dashboard shows auth decisions, scan volume, error rates, latency; Jaeger traces queryable from Grafana
 - pip-audit clean (zero high-severity CVEs) on both images
 
 ---
@@ -237,6 +254,9 @@ DELIVERABLES="$PROJECT_ROOT/deliverables"
 | 22 | MCP server `/health` endpoint requires no auth | Kubernetes liveness/readiness probes cannot present Bearer tokens. Auth spec `tools:health.read` scope is a known deviation, documented as accepted for Phase 0. | `user` | 2026-03-24 |
 | 23 | Worker NodePort remains accessible in local dev after MCP server is deployed | Preserves demo.sh and direct debugging capability. Production topology uses ClusterIP so worker is unreachable externally regardless. | `user` | 2026-03-24 |
 | 19 | DATE_TIME mapped to direct_identifier (high severity) is too broad for MVP | Observed in Phase 0 demo: benign date references ("next month", "quarterly") trigger high severity and block. DATE_TIME alone without other context should not reach high severity. Severity mapping for DATE_TIME to be revisited in Phase 1 classification calibration once empirical data from real payloads is available. | `agent-reasoning` + `empirical` | 2026-03-24 |
+| 28 | Jaeger (in-cluster, standalone K8s manifest) as distributed tracing backend | Self-hosted, Kubernetes-native, well-supported OTel backend. Deployed as standalone Deployment + Service in `infrastructure/jaeger.yaml` (not a Helm subchart) to minimise complexity. `jaeger-all-in-one` image for local/dev; no persistence (traces lost on restart — accepted for Phase 1). | `user` + `agent-reasoning` | 2026-03-24 |
+| 29 | W3C TraceContext (`traceparent` header) for cross-service trace propagation | IETF standard; replaces body-field `workflow_id` correlation for tracing purposes. `call_worker()` injects header on outbound requests; worker extracts it. `workflow_id` retained in request body for audit trail (it is a caller-supplied ID, separate from OTel trace ID). More maintainable than body-field correlation — decouples transport from schema. | `user` + `agent-reasoning` | 2026-03-24 |
+| 30 | OTel instrumentation: auto for HTTP spans + one manual span around `engine.analyze()` | Auto (`opentelemetry-instrumentation-fastapi`, `opentelemetry-instrumentation-httpx`) covers all HTTP spans with zero per-route code. One manual `presidio.analyze` span in the worker wraps `engine.analyze()` + `minimize()` to capture Presidio CPU time and attach scan business attributes (`scan.id`, `scan.decision`, `scan.findings_count`, `scan.entity_types`). Justification for manual span: auto gives "POST /scan took Xms"; manual gives "Presidio spent Xms on a 12-finding document with 4 entity types" — actionable for tuning. | `user` + `agent-reasoning` | 2026-03-24 |
 
 ---
 

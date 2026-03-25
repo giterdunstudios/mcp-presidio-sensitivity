@@ -269,6 +269,144 @@ except urllib.error.HTTPError as e:
 "
 }
 
+demo_trace() {
+  header "Scan lifecycle trace — ephemeral vs. persistent"
+  label "Shows what is created, what is discarded, and what (if anything) persists"
+  label "for a single scan request through the full Keycloak → MCP → Worker path."
+  echo ""
+
+  # Show pod ages — what's been running and since when
+  echo -e "${BOLD}Running services:${RESET}"
+  kubectl get pods -n mcp-presidio \
+    --sort-by='.metadata.creationTimestamp' \
+    -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,STARTED:.metadata.creationTimestamp' \
+    2>/dev/null | sed 's/T/ /g;s/Z//' | awk 'NR==1{next} {printf "  %-48s %-10s %s\n",$1,$2,$3}'
+  echo ""
+
+  echo -e "${BOLD}Request lifecycle:${RESET}"
+  echo ""
+
+  # Step 1 — token
+  printf "  ${DIM}[client]${RESET}     acquiring token from Keycloak ..."
+  TOKEN=$(get_token "tools:classify.submit")
+  echo -e "\r  ${DIM}[client]${RESET}     token acquired from Keycloak   ${DIM}(persists: JWT, TTL 300s)${RESET}"
+  sleep 0.7
+
+  # Step 2 — session
+  printf "  ${DIM}[client]${RESET}     opening MCP session ..."
+  SESSION=$(open_mcp_session "$TOKEN")
+  echo -e "\r  ${DIM}[client]${RESET}     MCP session opened             ${DIM}(persists: in-memory session, TTL ~idle)${RESET}"
+  sleep 0.7
+
+  # Step 3 — fire scan
+  echo ""
+  printf "  ${DIM}[client]${RESET}     sending classify_payload_sensitivity ..."
+  T0=$(date +%s%3N)
+
+  RESULT=$(curl -s \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -H "mcp-session-id: $SESSION" \
+    -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"classify_payload_sensitivity","arguments":{"content":"Employee John Smith, SSN 234-56-7890, card 4111111111111111.","content_type":"text/plain"}},"id":2}' \
+    "$MCP/mcp/mcp")
+
+  T1=$(date +%s%3N)
+  ELAPSED=$(( T1 - T0 ))
+  echo -e "\r  ${DIM}[client]${RESET}     request dispatched — waiting for response              "
+  sleep 0.5
+
+  # Step 4 — show MCP server log line
+  MCP_LOG=$(kubectl logs -n mcp-presidio deploy/mcp-presidio-sensitivity --since=15s 2>/dev/null \
+    | python3 -c "
+import sys,json
+for line in sys.stdin:
+    try:
+        d=json.loads(line)
+        if d.get('message')=='request' and d.get('auth_decision')=='allow':
+            ts=d.get('timestamp','')[11:23]
+            subj=d.get('caller_subject','')[:8]
+            dur=round(d.get('duration_ms',0))
+            print(f'  {ts}  mcp-server   auth=allow caller={subj}... duration={dur}ms')
+    except: pass
+" 2>/dev/null | tail -1)
+
+  if [[ -n "$MCP_LOG" ]]; then
+    echo -e "  ${CYAN}${MCP_LOG}${RESET}"
+    sleep 0.7
+  fi
+
+  # Step 5 — show worker log lines one at a time
+  WORKER_LINES=$(kubectl logs -n mcp-presidio deploy/presidio-worker --since=15s 2>/dev/null \
+    | python3 -c "
+import sys,json
+lines=[]
+for line in sys.stdin:
+    try:
+        d=json.loads(line)
+        if d.get('message') in ('scan started','scan completed'):
+            ts=d.get('timestamp','')[11:23]
+            msg=d.get('message','')
+            sid=d.get('scan_id','')[:8]
+            dec=d.get('decision','')
+            sev=d.get('max_severity_band','')
+            n=d.get('findings_count','')
+            extra=f' decision={dec} severity={sev} findings={n}' if dec else ''
+            lines.append(f'  {ts}  worker       {msg} scan_id={sid}...{extra}')
+    except: pass
+for l in lines[-2:]: print(l)
+" 2>/dev/null)
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    echo -e "  ${CYAN}${line}${RESET}"
+    sleep 0.8
+  done <<< "$WORKER_LINES"
+
+  echo ""
+
+  # Step 6 — ephemeral teardown steps, one per beat
+  sleep 0.4
+  echo -e "  ${DIM}[worker]${RESET}     Presidio ran in-process        ${DIM}(ephemeral: payload never written to disk)${RESET}"
+  sleep 0.7
+  echo -e "  ${DIM}[worker]${RESET}     scan_request deleted           ${DIM}(ephemeral: content reference dropped post-analysis)${RESET}"
+  sleep 0.7
+  echo -e "  ${DIM}[worker]${RESET}     result returned to MCP server  ${DIM}(ephemeral: not stored)${RESET}"
+  sleep 0.7
+  echo -e "  ${DIM}[client]${RESET}     bounded result returned        ${DIM}(ephemeral: lives in response only)${RESET}"
+  sleep 0.5
+
+  SCAN_ID=$(echo "$RESULT" | python3 -c "
+import sys,json,re
+raw=sys.stdin.read()
+m=re.search(r'data: (.+)', raw)
+if m:
+    r=json.loads(m.group(1))['result']['structuredContent']
+    print(r['scan_id'])
+" 2>/dev/null)
+
+  DECISION=$(echo "$RESULT" | python3 -c "
+import sys,json,re
+raw=sys.stdin.read()
+m=re.search(r'data: (.+)', raw)
+if m:
+    r=json.loads(m.group(1))['result']['structuredContent']
+    print(r['decision'], r['max_severity_band'])
+" 2>/dev/null)
+
+  echo ""
+  echo -e "${BOLD}Result:${RESET}  scan_id=${SCAN_ID}  decision=${DECISION}  round-trip=${ELAPSED}ms"
+  echo ""
+  sleep 0.5
+  echo -e "${BOLD}Persisted after this scan:${RESET}"
+  sleep 0.4
+  echo -e "  ${YELLOW}⚠  Nothing${RESET} — no database, no audit store, no file writes"
+  sleep 0.4
+  echo -e "  ${DIM}The only record is the log line above in pod stdout.${RESET}"
+  echo -e "  ${DIM}It disappears when the pod restarts.${RESET}"
+  echo -e "  ${DIM}Audit storage is Phase 1 Stream 2.${RESET}"
+}
+
 # ---------------------------------------------------------------------------
 # Menu
 # ---------------------------------------------------------------------------
@@ -293,6 +431,9 @@ show_menu() {
   echo "  7  Oversized payload rejected (>1MB)"
   echo "  8  Unsupported content type rejected"
   echo ""
+  echo -e "${BOLD}Observability${RESET}"
+  echo "  l  Scan lifecycle trace — ephemeral vs. persistent"
+  echo ""
   echo "  a  Run all demos in sequence"
   echo "  q  Quit"
   echo ""
@@ -310,6 +451,7 @@ run_demo() {
     6) demo_6 ;;
     7) demo_7 ;;
     8) demo_8 ;;
+    l|trace) demo_trace ;;
     *) warn "Unknown demo: $1" ;;
   esac
 }
@@ -326,7 +468,7 @@ if [[ $# -gt 0 && "$1" != "a" ]]; then
 fi
 
 if [[ $# -gt 0 && "$1" == "a" ]]; then
-  for d in auth token 1 2 3 4 5 6 7 8; do
+  for d in auth token 1 2 3 4 5 6 7 8 trace; do
     run_demo "$d"
     pause
   done
@@ -339,9 +481,9 @@ while true; do
   printf "Choose: "
   read -r choice
   case "$choice" in
-    [0-9]|t|token|auth) run_demo "$choice" ;;
+    [0-9]|t|l|token|auth|trace) run_demo "$choice" ;;
     a)
-      for d in auth token 1 2 3 4 5 6 7 8; do
+      for d in auth token 1 2 3 4 5 6 7 8 trace; do
         run_demo "$d"
         pause
       done
