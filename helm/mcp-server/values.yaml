@@ -86,6 +86,8 @@ readinessProbe:
 # ---------------------------------------------------------------------------
 namespace: mcp-presidio
 
+environment: production
+
 # ---------------------------------------------------------------------------
 # Temporary directory for uvicorn (memory-backed tmpfs)
 # Required because readOnlyRootFilesystem: true prevents writes to /tmp

@@ -38,6 +38,7 @@ RUN python -m spacy download en_core_web_lg
 
 # -- Application source ------------------------------------------------------
 COPY *.py ./
+COPY observability/ ./observability/
 
 # -- Ownership ---------------------------------------------------------------
 RUN chown -R worker:worker /app

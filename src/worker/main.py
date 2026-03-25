@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -27,35 +29,31 @@ import config
 from analyzer import get_engine
 from minimizer import minimize
 from models import ErrorResponse, ScanRequest, ScanResponse
+from observability.logging import configure_logging
 
 # ---------------------------------------------------------------------------
-# Logging — structured, no payload content
+# Logging — must be configured before any logger.getLogger() calls fire
 # ---------------------------------------------------------------------------
 
-import json as _json
-import time as _time
-
-
-class _JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        doc: dict = {
-            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S") + "Z",
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        for key in ("scan_id", "decision", "max_severity_band", "findings_count",
-                    "workflow_id", "policy_profile", "detector_version"):
-            if key in record.__dict__:
-                doc[key] = record.__dict__[key]
-        return _json.dumps(doc)
-
-
-_handler = logging.StreamHandler()
-_handler.setFormatter(_JsonFormatter())
-logging.root.setLevel(logging.INFO)
-logging.root.addHandler(_handler)
+configure_logging(
+    service_name="presidio-worker",
+    service_version=config.SERVICE_VERSION,
+    environment=config.ENVIRONMENT,
+)
 logger = logging.getLogger("presidio-worker")
+
+
+# ---------------------------------------------------------------------------
+# Lifespan — pre-warm Presidio on startup
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    logger.info("Pre-warming Presidio AnalyzerEngine")
+    get_engine(min_score_threshold=config.MIN_SCORE_THRESHOLD)
+    logger.info("Worker startup complete")
+    yield
+
 
 # ---------------------------------------------------------------------------
 # Application
@@ -64,24 +62,12 @@ logger = logging.getLogger("presidio-worker")
 app = FastAPI(
     title="Presidio Sensitivity Worker",
     version="0.1.0",
+    lifespan=lifespan,
     # Disable OpenAPI schema and docs UI in production to reduce attack surface.
-    # Set ENABLE_DOCS=true in local/dev environments only.
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
 )
-
-
-# ---------------------------------------------------------------------------
-# Startup
-# ---------------------------------------------------------------------------
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    """Pre-warm the Presidio AnalyzerEngine so the first scan request is fast."""
-    logger.info("Pre-warming Presidio AnalyzerEngine")
-    get_engine(min_score_threshold=config.MIN_SCORE_THRESHOLD)
-    logger.info("Worker startup complete")
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +184,7 @@ async def scan(request: Request) -> JSONResponse:
     workflow_id = scan_request.request_metadata.workflow_id if scan_request.request_metadata else None
     logger.info(
         "scan started",
-        extra={"scan_id": str(scan_id), "workflow_id": workflow_id or ""},
+        extra={"scan_id": str(scan_id), "workflow_id": workflow_id or "", "trace_id": workflow_id or str(scan_id)},
     )
     try:
         engine = get_engine(min_score_threshold=config.MIN_SCORE_THRESHOLD)
@@ -239,6 +225,7 @@ async def scan(request: Request) -> JSONResponse:
         "scan completed",
         extra={
             "scan_id": str(result.scan_id),
+            "trace_id": workflow_id or str(result.scan_id),
             "decision": result.decision,
             "max_severity_band": result.max_severity_band,
             "findings_count": result.confidence_summary.findings_count,

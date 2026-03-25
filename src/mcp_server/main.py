@@ -57,7 +57,11 @@ from observability.logging import configure_logging, log_request
 # Logging — must be configured before any logger.getLogger() calls fire
 # ---------------------------------------------------------------------------
 
-configure_logging()
+configure_logging(
+    service_name="mcp-presidio-sensitivity",
+    service_version=config.SERVICE_VERSION,
+    environment=config.ENVIRONMENT,
+)
 logger = logging.getLogger("mcp-presidio-sensitivity")
 
 # ---------------------------------------------------------------------------

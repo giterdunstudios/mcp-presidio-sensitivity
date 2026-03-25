@@ -26,3 +26,7 @@ SUPPORTED_CONTENT_TYPES: frozenset[str] = frozenset(
 
 # Minimum recognizer score threshold for a finding to be included
 MIN_SCORE_THRESHOLD: float = float(os.environ.get("MIN_SCORE_THRESHOLD", 0.4))
+
+# Service identity (used in structured log records)
+SERVICE_VERSION: str = os.environ.get("SERVICE_VERSION", "0.1.0")
+ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "production")

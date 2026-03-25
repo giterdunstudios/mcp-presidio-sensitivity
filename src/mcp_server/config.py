@@ -57,6 +57,13 @@ MAX_PAYLOAD_BYTES: int = int(os.environ.get("MAX_PAYLOAD_BYTES", 1_048_576))
 WORKER_TIMEOUT_SECONDS: float = float(os.environ.get("WORKER_TIMEOUT_SECONDS", 30.0))
 
 # ---------------------------------------------------------------------------
+# Service identity (used in structured log records)
+# ---------------------------------------------------------------------------
+
+SERVICE_VERSION: str = os.environ.get("SERVICE_VERSION", "0.1.0")
+ENVIRONMENT: str = os.environ.get("ENVIRONMENT", "production")
+
+# ---------------------------------------------------------------------------
 # Server configuration
 # ---------------------------------------------------------------------------
 

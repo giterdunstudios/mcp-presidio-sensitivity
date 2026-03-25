@@ -32,6 +32,8 @@ config:
   policyProfile: default
   minScoreThreshold: "0.4"
 
+environment: local
+
 # ClusterIP is fine for local — use kubectl port-forward to reach the worker
 service:
   type: NodePort

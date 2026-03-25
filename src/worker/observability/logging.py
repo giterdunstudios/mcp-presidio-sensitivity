@@ -1,5 +1,5 @@
 """
-Structured logging configuration for the MCP server.
+Structured logging configuration for the Presidio worker.
 
 Log format is JSON-compatible structured output aligned to the OpenTelemetry
 log data model (flattened for stdout/Kubernetes).  The `content` field is
@@ -15,10 +15,9 @@ from __future__ import annotations
 
 import json
 import logging
-import logging.config
 import sys
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 
 # ---------------------------------------------------------------------------
@@ -27,14 +26,6 @@ from typing import Any, Optional
 
 
 class _ServiceContextFilter(logging.Filter):
-    """
-    Inject static service-identity fields into every LogRecord.
-
-    Fields injected: service_name, service_version, environment.
-    These are set by configure_logging() using values from config; the
-    formatter then surfaces them in the defined field order.
-    """
-
     def __init__(self, service_name: str, service_version: str, environment: str) -> None:
         super().__init__()
         self._service_name = service_name
@@ -54,16 +45,6 @@ class _ServiceContextFilter(logging.Filter):
 
 
 class JsonFormatter(logging.Formatter):
-    """
-    Emit log records as single-line JSON objects.
-
-    Fixed field order: timestamp, level, service_name, service_version,
-    environment, logger, message, trace_id (if present), then all remaining
-    caller-supplied extras.  Service fields are injected by _ServiceContextFilter
-    before this formatter runs.
-    """
-
-    # Fields that are part of LogRecord internals — not surfaced as extras
     _RESERVED = frozenset(
         {
             "args",
@@ -88,7 +69,6 @@ class JsonFormatter(logging.Formatter):
             "taskName",
             "thread",
             "threadName",
-            # injected by _ServiceContextFilter — handled explicitly below
             "service_name",
             "service_version",
             "environment",
@@ -108,11 +88,9 @@ class JsonFormatter(logging.Formatter):
             "message": record.message,
         }
 
-        # trace_id emitted immediately after message if present
         if "trace_id" in record.__dict__:
             doc["trace_id"] = record.__dict__["trace_id"]
 
-        # Remaining caller-supplied extras
         for key, value in record.__dict__.items():
             if key not in self._RESERVED and key != "trace_id":
                 doc[key] = value
@@ -150,48 +128,30 @@ def configure_logging(
 
 
 # ---------------------------------------------------------------------------
-# Request log helper
+# Scan log helper
 # ---------------------------------------------------------------------------
 
 
-def log_request(
+def log_scan(
     *,
     logger: logging.Logger,
-    correlation_id: str,
-    caller_subject: str,
-    tool: str,
-    auth_decision: str,
-    worker_status: Optional[str] = None,
-    duration_ms: float,
+    event: str,
+    scan_id: str,
+    level: int = logging.INFO,
+    **kwargs: Any,
 ) -> None:
     """
-    Emit a single structured log record for a completed request.
-
-    Level: WARNING for auth denials (deny-401, deny-403); INFO otherwise.
+    Emit a single structured log record for a scan lifecycle event.
 
     Args:
-        logger:          Logger instance to write to.
-        correlation_id:  UUID string identifying this request.
-        caller_subject:  `sub` claim from the validated JWT.
-        tool:            Endpoint or tool name.
-        auth_decision:   One of: allow / deny-401 / deny-403.
-        worker_status:   HTTP status code from worker call, or None if not called.
-        duration_ms:     Total request duration in milliseconds.
+        logger:   Logger instance to write to.
+        event:    One of: scan started / scan completed / scan rejected / scan failed.
+        scan_id:  UUID identifying the scan.
+        level:    Log level (default INFO).
+        **kwargs: Additional safe fields (decision, max_severity_band,
+                  findings_count, workflow_id, etc.).
 
     Security note:
         This function has no `content` parameter and must never be given one.
     """
-    extra = {
-        "correlation_id": correlation_id,
-        "trace_id": correlation_id,
-        "caller_subject": caller_subject,
-        "tool": tool,
-        "auth_decision": auth_decision,
-        "worker_status": worker_status,
-        "duration_ms": round(duration_ms, 2),
-    }
-
-    if auth_decision.startswith("deny"):
-        logger.warning("request", extra=extra)
-    else:
-        logger.info("request", extra=extra)
+    logger.log(level, event, extra={"scan_id": scan_id, **kwargs})

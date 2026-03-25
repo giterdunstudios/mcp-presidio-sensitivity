@@ -31,6 +31,8 @@ config:
   # Override issuerUrl so PyJWT validates against the actual token issuer.
   issuerUrl: "http://localhost:8080/realms/mcp-local"
 
+environment: local
+
 # NodePort — exposes the server on localhost:30800 via kind extraPortMappings
 # (kind-config.yaml must include containerPort: 30800)
 service:

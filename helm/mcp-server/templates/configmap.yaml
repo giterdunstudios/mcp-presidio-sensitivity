@@ -15,3 +15,5 @@ data:
   WORKER_TIMEOUT_SECONDS: {{ .Values.config.workerTimeoutSeconds | quote }}
   SERVER_RESOURCE_URL: {{ .Values.config.serverResourceUrl | quote }}
   PORT: {{ .Values.config.port | quote }}
+  SERVICE_VERSION: {{ .Chart.AppVersion | quote }}
+  ENVIRONMENT: {{ .Values.environment | default "production" | quote }}

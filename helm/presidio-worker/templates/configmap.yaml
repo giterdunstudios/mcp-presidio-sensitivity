@@ -10,3 +10,5 @@ data:
   DEFAULT_LANGUAGE: {{ .Values.config.defaultLanguage | quote }}
   POLICY_PROFILE: {{ .Values.config.policyProfile | quote }}
   MIN_SCORE_THRESHOLD: {{ .Values.config.minScoreThreshold | quote }}
+  SERVICE_VERSION: {{ .Chart.AppVersion | quote }}
+  ENVIRONMENT: {{ .Values.environment | default "production" | quote }}
