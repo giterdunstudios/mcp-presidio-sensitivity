@@ -79,9 +79,38 @@ TOKEN_RESPONSE=$(curl -sf --max-time 5 -X POST \
   2>/dev/null)
 
 if echo "$TOKEN_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'access_token' in d" 2>/dev/null; then
-  pass "Token acquisition from Keycloak"
+  EXPIRES_IN=$(echo "$TOKEN_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('expires_in','?'))")
+  pass "Token acquisition from Keycloak (expires_in: ${EXPIRES_IN}s)"
+  # DEC-002: token TTL must be ≤ 60s
+  if [[ "$EXPIRES_IN" =~ ^[0-9]+$ ]] && [[ "$EXPIRES_IN" -gt 300 ]]; then
+    fail "DEC-002 VIOLATION: token TTL ${EXPIRES_IN}s > 300s — run: ./scripts/keycloak-admin.sh set-ttl 60"
+  elif [[ "$EXPIRES_IN" =~ ^[0-9]+$ ]] && [[ "$EXPIRES_IN" -gt 60 ]]; then
+    warn "DEC-002 advisory: token TTL ${EXPIRES_IN}s > 60s target — run: ./scripts/keycloak-admin.sh set-ttl 60"
+  fi
 else
   fail "Token acquisition from Keycloak — check client config or Keycloak realm"
+fi
+
+# ---------------------------------------------------------------------------
+# RFC 9728 compliance check
+# ---------------------------------------------------------------------------
+header "RFC 9728 (Protected Resource Metadata)"
+
+WWW_AUTH=$(curl -si --max-time 5 -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" -d '{}' 2>/dev/null \
+  | grep -i "^www-authenticate:" | tr -d '\r')
+
+if echo "$WWW_AUTH" | grep -q "resource_metadata"; then
+  pass "401 WWW-Authenticate contains resource_metadata pointer"
+else
+  fail "401 WWW-Authenticate missing resource_metadata (RFC 9728 §5 non-compliant)"
+fi
+
+META=$(curl -sf --max-time 5 http://localhost:8000/.well-known/oauth-protected-resource 2>/dev/null)
+if echo "$META" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'resource' in d and 'authorization_servers' in d" 2>/dev/null; then
+  pass "/.well-known/oauth-protected-resource returns valid document"
+else
+  fail "/.well-known/oauth-protected-resource missing required fields"
 fi
 
 # ---------------------------------------------------------------------------
