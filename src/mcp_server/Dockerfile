@@ -39,6 +39,7 @@ COPY authorization/ ./authorization/
 COPY tools/ ./tools/
 COPY backend/ ./backend/
 COPY observability/ ./observability/
+COPY audit/ ./audit/
 
 # -- Ownership ---------------------------------------------------------------
 RUN chown -R mcpserver:mcpserver /app
