@@ -1,8 +1,10 @@
 """
 Auth error types and HTTP response builders.
 
-Returns RFC 6750-compliant WWW-Authenticate challenges on 401.
-Returns RFC 6749-style error bodies on 403.
+Returns RFC 6750-compliant WWW-Authenticate challenges on 401/403.
+Returns RFC 9728-compliant resource_metadata pointer in WWW-Authenticate
+so that RFC 9728-aware clients can discover the Authorization Server without
+out-of-band configuration.
 
 Security note:
   Error responses never include token content, payload data,
@@ -13,6 +15,15 @@ from __future__ import annotations
 
 from fastapi import status
 from fastapi.responses import JSONResponse
+
+import config
+
+# RFC 9728 §5: WWW-Authenticate must carry the resource_metadata URL so
+# clients can locate the Protected Resource Metadata document and derive
+# the Authorization Server token endpoint without prior configuration.
+_RESOURCE_METADATA_URL = (
+    f"{config.SERVER_RESOURCE_URL}/.well-known/oauth-protected-resource"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +53,8 @@ def build_401_response(reason: str = "invalid_token") -> JSONResponse:
     Build a 401 Unauthorized response with a WWW-Authenticate Bearer challenge.
 
     RFC 6750 §3 requires the WWW-Authenticate header on 401.
-    The `error` parameter is included per RFC 6750 §3.1.
+    RFC 9728 §5 requires the resource_metadata URI so clients can discover
+    the Authorization Server without out-of-band configuration.
     """
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -50,6 +62,7 @@ def build_401_response(reason: str = "invalid_token") -> JSONResponse:
         headers={
             "WWW-Authenticate": (
                 'Bearer realm="mcp-presidio-server",'
+                f' resource_metadata="{_RESOURCE_METADATA_URL}",'
                 f' error="{reason}",'
                 ' error_description="Token validation failed"'
             )
@@ -61,7 +74,9 @@ def build_403_response(required_scope: str) -> JSONResponse:
     """
     Build a 403 Forbidden response when a valid token lacks the required scope.
 
-    RFC 6750 §3.1: use `insufficient_scope` error code.
+    RFC 6750 §3.1: use `insufficient_scope` error code with scope challenge.
+    RFC 9728 §5: include resource_metadata so clients can re-authorise with
+    the correct scope without out-of-band configuration.
     """
     return JSONResponse(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -74,6 +89,7 @@ def build_403_response(required_scope: str) -> JSONResponse:
         headers={
             "WWW-Authenticate": (
                 'Bearer realm="mcp-presidio-server",'
+                f' resource_metadata="{_RESOURCE_METADATA_URL}",'
                 ' error="insufficient_scope",'
                 f' scope="{required_scope}"'
             )
