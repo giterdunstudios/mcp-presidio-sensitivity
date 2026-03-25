@@ -83,11 +83,10 @@ namespace: mcp-presidio
 environment: production
 
 # ---------------------------------------------------------------------------
-# Network policy — restrict egress to DNS only (worker has no outbound deps)
-# Enable when network policies are supported by the cluster.
+# Network policy — deny all ingress except from MCP server pod
 # ---------------------------------------------------------------------------
 networkPolicy:
-  enabled: false
+  enabled: true
 
 # ---------------------------------------------------------------------------
 # Temporary directory for uvicorn/spaCy (memory-backed tmpfs)

@@ -1,0 +1,47 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "mcp-presidio-sensitivity.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "mcp-presidio-sensitivity.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "mcp-presidio-sensitivity.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # Worker — scan requests
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: presidio-worker
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Keycloak — JWKS fetch via OIDC discovery.
+    # Uses app: keycloak label (plain K8s Deployment, not Helm — confirmed
+    # via kubectl get pods --show-labels 2026-03-24).
+    - to:
+        - podSelector:
+            matchLabels:
+              app: keycloak
+      ports:
+        - protocol: TCP
+          port: 8080
+    # DNS — required for cluster-internal service resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

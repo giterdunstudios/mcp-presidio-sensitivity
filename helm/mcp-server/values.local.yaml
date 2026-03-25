@@ -33,6 +33,9 @@ config:
 
 environment: local
 
+networkPolicy:
+  enabled: true
+
 # NodePort — exposes the server on localhost:30800 via kind extraPortMappings
 # (kind-config.yaml must include containerPort: 30800)
 service:

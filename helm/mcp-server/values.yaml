@@ -89,6 +89,12 @@ namespace: mcp-presidio
 environment: production
 
 # ---------------------------------------------------------------------------
+# Network policy — restrict egress to worker, Keycloak, and DNS only
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+
+# ---------------------------------------------------------------------------
 # Temporary directory for uvicorn (memory-backed tmpfs)
 # Required because readOnlyRootFilesystem: true prevents writes to /tmp
 # ---------------------------------------------------------------------------
