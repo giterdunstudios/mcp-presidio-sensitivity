@@ -1,10 +1,31 @@
 #!/usr/bin/env bash
-# Demo script for the mcp-presidio-sensitivity local stack.
+# End-to-end demo for the mcp-presidio-sensitivity local stack.
+#
+# When to use:
+#   - To verify the full request path works after a rebuild or deploy
+#   - To demonstrate capabilities to stakeholders
+#   - To manually validate a specific scenario (auth, detection, enforcement)
+#   Run ./scripts/status.sh first to confirm the stack is healthy before
+#   running the demo.
+#
+# Demo cases:
+#   0  Auth boundary — 401 / 403 / 200
+#   t  Token issuance and decoded claims
+#   1  Credit card detected and blocked
+#   2  Name + email + phone
+#   3  US SSN detected
+#   4  Clean business text → allow
+#   5  Date-only text → flag (not block)
+#   6  Rich payload — 4+ entity types
+#   7  Oversized payload rejected (>1 MiB)
+#   8  Unsupported content type rejected
+#   l  Scan lifecycle trace — ephemeral vs persistent
+#   a  Run all demos in sequence
 #
 # Usage:
 #   ./scripts/demo.sh          # interactive menu
-#   ./scripts/demo.sh <number> # run a specific demo directly
-#   ./scripts/demo.sh a        # run all demos in sequence
+#   ./scripts/demo.sh <number> # run a specific demo directly (e.g. demo.sh 1)
+#   ./scripts/demo.sh a        # run all demos in sequence (CI / sign-off)
 
 set -euo pipefail
 

@@ -1,7 +1,24 @@
 #!/usr/bin/env bash
-# Stack status check for mcp-presidio-sensitivity local dev.
-# Run at any time to see the state of all services.
-# Usage: ./scripts/status.sh
+# Full stack health and compliance check for mcp-presidio-sensitivity local dev.
+#
+# When to use:
+#   - At the start of any development session to confirm the stack is healthy
+#   - After ./scripts/rebuild.sh to verify the new pods came up cleanly
+#   - After ./scripts/setup-local.sh to confirm full stack is ready
+#   - Any time a service is unresponsive and you need a quick overview
+#   - Before running demo.sh — catches problems before the live demo
+#
+# What it checks:
+#   - Kind cluster exists
+#   - All pods Running with 0 unexpected restarts
+#   - Keycloak OIDC discovery endpoint reachable and returning valid JSON
+#   - Worker and MCP server /health endpoints returning ok
+#   - Token acquisition succeeds and TTL matches DEC-002 (≤ 60s)
+#   - RFC 9728: 401 carries resource_metadata in WWW-Authenticate
+#   - RFC 9728: /.well-known/oauth-protected-resource returns valid document
+#
+# Usage:
+#   ./scripts/status.sh
 
 set -uo pipefail
 

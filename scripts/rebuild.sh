@@ -2,11 +2,25 @@
 # Rebuild one or both service images, load into the kind cluster, and
 # perform a rolling restart so pods pick up the new image immediately.
 #
+# When to use:
+#   - After any Python source change to src/mcp_server/ or src/worker/
+#   - After any Dockerfile change
+#   - When a pod is running stale code (imageID in kubectl describe doesn't
+#     match the locally built sha256)
+#   - After merging a branch that changes application code
+#   Always use this instead of manual docker build + kind load + rollout
+#   commands — it ensures --no-cache, correct image tags, and waits for
+#   rollout completion before returning.
+#
 # Usage:
-#   ./scripts/rebuild.sh              # rebuild both images
-#   ./scripts/rebuild.sh mcp          # rebuild MCP server only
-#   ./scripts/rebuild.sh worker       # rebuild worker only
+#   ./scripts/rebuild.sh              # rebuild both images (most common)
+#   ./scripts/rebuild.sh mcp          # MCP server only — src/mcp_server/ changed
+#   ./scripts/rebuild.sh worker       # worker only — src/worker/ changed
 #   ./scripts/rebuild.sh mcp worker   # explicit both
+#
+# Prerequisites:
+#   - Kind cluster running (./scripts/setup-local.sh completed)
+#   - Docker available
 
 set -euo pipefail
 

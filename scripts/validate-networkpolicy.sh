@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Cluster-level NetworkPolicy validation for Stream 3.
 #
-# Runs against the live local kind cluster. Deploys a temporary test pod,
-# runs connectivity checks, and cleans up.
+# When to use:
+#   - After any change to helm/mcp-server/templates/networkpolicy.yaml or
+#     helm/presidio-worker/templates/networkpolicy.yaml
+#   - After a Helm upgrade that touches networkPolicy.enabled
+#   - After a cluster rebuild to confirm policies are enforced
+#   - Before Phase 1 exit sign-off (required gate — see decision-log.md DEC-001)
+#   Note: deploys and cleans up a temporary busybox test pod automatically.
 #
 # Use cases covered (cases 11–20):
 #   11. MCP server pod → worker /scan              ALLOWED

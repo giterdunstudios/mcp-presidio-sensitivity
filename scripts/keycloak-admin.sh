@@ -1,13 +1,34 @@
 #!/usr/bin/env bash
 # Keycloak admin operations for the mcp-local realm.
 #
-# All operations obtain a short-lived admin token from the master realm first;
-# it is never stored to disk or printed to stdout.
+# All operations obtain a short-lived admin token from the master realm first.
+# The admin token is never stored to disk or printed to stdout.
+#
+# When to use:
+#   status          — At the start of any session to confirm realm config
+#                     matches what is expected (TTL, brute force, client state).
+#                     Also run after a cluster rebuild to confirm the realm
+#                     import applied correctly.
+#
+#   set-ttl         — After a cluster rebuild if the realm import did not
+#                     apply the TTL (Keycloak ignores accessTokenLifespan in
+#                     partial imports). Also used to apply DEC-002 on a
+#                     freshly created realm.
+#                     Target: 60 seconds (see decision-log.md DEC-002).
+#
+#   discovery-check — Before any auth-related release or after changing
+#                     auth/errors.py, config.py, or the /.well-known endpoint.
+#                     Walks the full RFC 9728 four-step discovery chain and
+#                     asserts every step is spec-compliant.
 #
 # Usage:
-#   ./scripts/keycloak-admin.sh status              # show current realm settings
-#   ./scripts/keycloak-admin.sh set-ttl <seconds>   # update access token TTL
-#   ./scripts/keycloak-admin.sh discovery-check     # verify RFC 9728 discovery chain
+#   ./scripts/keycloak-admin.sh status
+#   ./scripts/keycloak-admin.sh set-ttl 60
+#   ./scripts/keycloak-admin.sh discovery-check
+#
+# Prerequisites:
+#   - Keycloak running and accessible at http://localhost:8080
+#   - mcp-local realm imported
 
 set -euo pipefail
 

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Bootstrap the local mcp-presidio development stack.
 #
+# When to use:
+#   - First-time setup on a new machine or after --teardown
+#   - After a WSL2 restart that wiped the kind cluster
+#   - When you need a completely clean environment (teardown + re-run)
+#   Do NOT use this for routine code changes — use ./scripts/rebuild.sh instead.
+#
 # What this does:
 #   1. Creates the kind cluster with host port mappings
 #   2. Creates the mcp-presidio namespace
@@ -10,14 +16,18 @@
 #   6. Waits for all pods to be ready
 #   7. Runs a smoke test against each endpoint
 #
+# After setup, always run:
+#   ./scripts/keycloak-admin.sh set-ttl 60   (enforce DEC-002 token TTL)
+#   ./scripts/status.sh                       (confirm full stack is healthy)
+#
 # Prerequisites:
 #   - kind, kubectl, helm, docker (with docker group access)
 #   - presidio-worker image built: docker build -t presidio-worker:0.1.0 src/worker/
 #
 # Usage:
-#   ./scripts/setup-local.sh            # full setup
+#   ./scripts/setup-local.sh               # full setup
 #   ./scripts/setup-local.sh --skip-build  # skip image build (use existing image)
-#   ./scripts/setup-local.sh --teardown # delete the cluster and exit
+#   ./scripts/setup-local.sh --teardown    # delete the cluster and exit
 
 set -euo pipefail
 
