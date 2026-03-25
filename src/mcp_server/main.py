@@ -50,6 +50,7 @@ from auth.errors import (
 )
 from auth.token_verifier import verify_token
 from authorization.policy import is_authorized
+from audit.trail import write_audit_record
 from backend.worker_client import WorkerError, call_worker
 from observability.logging import configure_logging, log_request
 
@@ -70,6 +71,9 @@ logger = logging.getLogger("mcp-presidio-sensitivity")
 
 _current_correlation_id: ContextVar[str] = ContextVar(
     "_current_correlation_id", default=""
+)
+_current_caller_subject: ContextVar[str] = ContextVar(
+    "_current_caller_subject", default="unknown"
 )
 
 # ---------------------------------------------------------------------------
@@ -121,10 +125,10 @@ async def classify_payload_sensitivity(
         - matched_categories, entity_summary, decision
         - confidence_summary, policy_profile, detector_version, timestamp
     """
-    # Retrieve correlation_id injected by JWT middleware via context variable.
-    # The middleware always sets this before the tool handler fires.
-    # The fallback generates a new UUID if called outside the middleware context.
+    # Retrieve context vars injected by JWT middleware.
+    # Fallbacks fire only when called outside the middleware context (e.g. tests).
     correlation_id = _current_correlation_id.get(str(uuid.uuid4()))
+    caller_subject = _current_caller_subject.get("unknown")
 
     effective_workflow_id = workflow_id or correlation_id
 
@@ -138,8 +142,18 @@ async def classify_payload_sensitivity(
             correlation_id=effective_workflow_id,
             source_system="mcp-presidio-sensitivity",
         )
+        write_audit_record(
+            correlation_id=effective_workflow_id,
+            caller_subject=caller_subject,
+            result=result,
+        )
         return result.model_dump(mode="json")
     except WorkerError as exc:
+        write_audit_record(
+            correlation_id=effective_workflow_id,
+            caller_subject=caller_subject,
+            error=exc,
+        )
         # Raise as a plain exception — MCP SDK surfaces this as a tool error.
         # No payload content in exc.message (WorkerError never receives payload).
         raise RuntimeError(f"{exc.error_code}: {exc.message}") from exc
@@ -212,6 +226,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 
         # Inject correlation_id into context var for tool handler access
         token = _current_correlation_id.set(correlation_id)
+        caller_subject_token = _current_caller_subject.set("unknown")
 
         # Store on request state for use in route handlers
         request.state.correlation_id = correlation_id
@@ -227,6 +242,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             request.state.auth_decision = "exempt"
             response = await call_next(request)
             _current_correlation_id.reset(token)
+            _current_caller_subject.reset(caller_subject_token)
             return response
 
         # ------------------------------------------------------------------
@@ -245,6 +261,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 duration_ms=duration_ms,
             )
             _current_correlation_id.reset(token)
+            _current_caller_subject.reset(caller_subject_token)
             return build_401_response("invalid_token")
         except TokenInvalidError:
             duration_ms = (time.monotonic() - start_time) * 1000
@@ -257,6 +274,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 duration_ms=duration_ms,
             )
             _current_correlation_id.reset(token)
+            _current_caller_subject.reset(caller_subject_token)
             return build_401_response("invalid_token")
 
         caller_subject = claims.get("_subject", "unknown")
@@ -264,6 +282,10 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 
         request.state.caller_subject = caller_subject
         request.state.claims = claims
+
+        # Update caller_subject context var now that we have the real subject
+        _current_caller_subject.reset(caller_subject_token)
+        caller_subject_token = _current_caller_subject.set(caller_subject)
 
         # ------------------------------------------------------------------
         # Scope authorization — classify tool requires tools:classify.submit
@@ -287,6 +309,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                     duration_ms=duration_ms,
                 )
                 _current_correlation_id.reset(token)
+                _current_caller_subject.reset(caller_subject_token)
                 return build_403_response(required_scope)
 
         request.state.auth_decision = "allow"
@@ -310,6 +333,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         )
 
         _current_correlation_id.reset(token)
+        _current_caller_subject.reset(caller_subject_token)
         return response
 
 
