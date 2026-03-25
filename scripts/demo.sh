@@ -62,7 +62,7 @@ open_mcp_session() {
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"demo","version":"1.0"}},"id":1}' \
-    "$MCP/mcp/mcp" 2>&1 | grep -i "mcp-session-id:" | tr -d '\r' | awk '{print $2}'
+    "$MCP/mcp" 2>&1 | grep -i "mcp-session-id:" | tr -d '\r' | awk '{print $2}'
 }
 
 # Call classify_payload_sensitivity via MCP and print formatted result
@@ -76,7 +76,7 @@ mcp_classify() {
     -H "Accept: application/json, text/event-stream" \
     -H "mcp-session-id: $session" \
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"classify_payload_sensitivity\",\"arguments\":{\"content\":\"$escaped\",\"content_type\":\"text/plain\"}},\"id\":2}" \
-    "$MCP/mcp/mcp" | python3 -c "
+    "$MCP/mcp" | python3 -c "
 import sys,json,re
 raw=sys.stdin.read()
 m=re.search(r'data: (.+)', raw)
@@ -104,11 +104,11 @@ demo_auth() {
   echo ""
 
   printf "  No token        → "
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" "$MCP/mcp/mcp")
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" "$MCP/mcp")
   [[ "$CODE" == "401" ]] && success "HTTP $CODE — Unauthorised" || fail "HTTP $CODE (expected 401)"
 
   printf "  Garbage token   → "
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer not.a.real.token" "$MCP/mcp/mcp")
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer not.a.real.token" "$MCP/mcp")
   [[ "$CODE" == "401" ]] && success "HTTP $CODE — Unauthorised" || fail "HTTP $CODE (expected 401)"
 
   printf "  Wrong scope     → "
@@ -118,7 +118,7 @@ demo_auth() {
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"demo","version":"1.0"}},"id":1}' \
-    "$MCP/mcp/mcp")
+    "$MCP/mcp")
   [[ "$CODE" == "403" ]] && success "HTTP $CODE — Forbidden (insufficient scope)" || fail "HTTP $CODE (expected 403)"
 
   printf "  Correct scope   → "
@@ -128,7 +128,7 @@ demo_auth() {
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"demo","version":"1.0"}},"id":1}' \
-    "$MCP/mcp/mcp")
+    "$MCP/mcp")
   [[ "$CODE" == "200" ]] && success "HTTP $CODE — session opened" || fail "HTTP $CODE (expected 200)"
 
   printf "  /health no auth → "
@@ -309,7 +309,7 @@ demo_trace() {
     -H "Accept: application/json, text/event-stream" \
     -H "mcp-session-id: $SESSION" \
     -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"classify_payload_sensitivity","arguments":{"content":"Employee John Smith, SSN 234-56-7890, card 4111111111111111.","content_type":"text/plain"}},"id":2}' \
-    "$MCP/mcp/mcp")
+    "$MCP/mcp")
 
   T1=$(date +%s%3N)
   ELAPSED=$(( T1 - T0 ))

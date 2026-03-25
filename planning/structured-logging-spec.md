@@ -152,7 +152,7 @@ Example — auth denial (WARNING):
   "trace_id":       "4a9ff585-0965-4579-b35c-2193344746a1",
   "correlation_id": "4a9ff585-0965-4579-b35c-2193344746a1",
   "caller_subject": "anonymous",
-  "tool":           "/mcp/mcp",
+  "tool":           "/mcp",
   "auth_decision":  "deny-401",
   "duration_ms":    1.2
 }

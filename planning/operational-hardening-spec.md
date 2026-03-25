@@ -135,11 +135,11 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    # Keycloak
+    # Keycloak (plain K8s Deployment — uses app: keycloak, not app.kubernetes.io/name)
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: keycloak
+              app: keycloak
       ports:
         - protocol: TCP
           port: 8080
@@ -169,9 +169,9 @@ networkPolicy:
 
 ### Implementation note on Keycloak label
 
-The local Keycloak deployment is a plain K8s Deployment (not a Helm chart). Its pod label
-must be verified — if it uses `app: keycloak` rather than `app.kubernetes.io/name: keycloak`,
-the `podSelector` in the NetworkPolicy must match. Check `kubectl get pods -n mcp-presidio --show-labels` and adjust accordingly.
+Confirmed via `kubectl get pods -n mcp-presidio --show-labels` (2026-03-24):
+Keycloak pod uses `app: keycloak` — **not** `app.kubernetes.io/name`. The egress rule
+selector must use `matchLabels: { app: keycloak }`, not the Helm convention label.
 
 ### Acceptance criteria
 

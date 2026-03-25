@@ -2,7 +2,7 @@
 
 **Status:** `ready-for-implementation`
 **Stream:** Phase 1 — Stream 2
-**Depends on:** structured-logging-spec.md (JSON formatter and service fields must be in place)
+**Depends on:** structured-logging-spec.md (JSON formatter and service fields must be in place — audit trail implementation must not begin until structured logging is complete and deployed)
 **Feeds into:** otel-spec.md (audit records carry `trace_id` from OTel span once instrumented)
 **Last updated:** 2026-03-24
 

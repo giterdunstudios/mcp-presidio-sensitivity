@@ -36,7 +36,7 @@ structured log records and audit trail entries, enabling log/trace correlation f
 A successful classify call produces this span tree:
 
 ```
-[MCP server — POST /mcp/mcp]                       ← auto (fastapi instrumentation)
+[MCP server — POST /mcp]                           ← auto (fastapi instrumentation)
   │  trace_id: abc123
   │  span attrs: http.method, http.route, http.status_code
   │

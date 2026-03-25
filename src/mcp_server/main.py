@@ -346,7 +346,10 @@ async def oauth_protected_resource() -> dict:
 # ---------------------------------------------------------------------------
 # Mount MCP SDK application
 # ---------------------------------------------------------------------------
-# The FastMCP app is mounted at /mcp.  The JWT middleware intercepts all
-# requests to /mcp* before the MCP SDK sees them.
+# The FastMCP app is mounted at /.  The SDK's streamable HTTP transport
+# registers its endpoint at /mcp, making the effective path /mcp.
+# Explicit routes (/health, /.well-known/...) are defined above and matched
+# first by FastAPI's router before the catch-all mount is reached.
+# The JWT middleware intercepts all requests before the MCP SDK sees them.
 
-app.mount("/mcp", mcp_app)
+app.mount("/", mcp_app)
