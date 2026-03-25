@@ -34,6 +34,9 @@ config:
 
 environment: local
 
+networkPolicy:
+  enabled: true
+
 # ClusterIP is fine for local — use kubectl port-forward to reach the worker
 service:
   type: NodePort
