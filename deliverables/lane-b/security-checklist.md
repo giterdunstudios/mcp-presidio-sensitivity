@@ -145,11 +145,19 @@ result only; persistent audit storage is the MCP server's responsibility.
 
 ### Dependency scan clean or risk-accepted
 
-**Status:** Pending
-**Evidence:** No dependency scan has been run yet.
+**Status:** Complete — one finding risk-accepted
+**Evidence:**
+- `pip-audit` run against `requirements.lock.txt` for both images (2026-03-24)
+- Lock files generated via `pip-compile` from `requirements.txt` constraints
+- MCP server image: **zero vulnerabilities**
+- Worker image: **one finding** — CVE-2026-4539 in `pygments==2.19.2`
 
-**Remaining:** Run `pip-audit` against the installed dependency set before
-the Phase 0 exit gate.  Document any findings as risk-accepted or resolved.
+**CVE-2026-4539 (pygments 2.19.2) — risk accepted**
+- Transitive dependency: `pygments` ← `rich` ← `spacy` / `presidio-analyzer`
+- No upstream fix available as of 2026-03-24 (2.19.2 is the latest release)
+- `pygments` is not invoked in the worker's production request path; it is used only by CLI tooling in the `rich` / `spacy` packages that are not executed at runtime
+- Documented in `src/worker/.pip-audit-ignore`
+- Action: re-evaluate when a fixed pygments release is published; update lock file and remove ignore entry
 
 ---
 
@@ -224,7 +232,7 @@ image.
 | Scan timeout enforcement | Partial — uvicorn default only |
 | TLS / service mesh | Deferred to platform layer |
 | Network policy enforcement | Deferred (scaffolded in values) |
-| Dependency scan | Pending |
+| Dependency scan | Complete — CVE-2026-4539 risk-accepted (no upstream fix) |
 | Exact dependency pinning | Pending |
 | Audit store integration | Phase 1 |
 | Custom recognizer change control | Phase 1 |

@@ -1,0 +1,15 @@
+# pip-audit ignore file
+# Format: <CVE-ID> <reason>
+#
+# Each line documents a known vulnerability that has been reviewed and
+# accepted as risk. Review this file before each release and remove entries
+# once an upstream fix is available.
+
+# CVE-2026-4539 — pygments 2.19.2
+# Transitive dependency: pygments <- rich <- spacy/presidio-analyzer
+# No upstream fix available as of 2026-03-24. pygments is not used by
+# application code directly; it is pulled in by rich for terminal output in
+# the spaCy/presidio CLI tools which are not present in the production image.
+# Risk: low — pygments is not invoked at runtime in the worker service path.
+# Action: re-evaluate when a fixed pygments release is published.
+CVE-2026-4539

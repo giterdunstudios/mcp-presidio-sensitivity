@@ -21,11 +21,16 @@ RUN groupadd --gid 1001 mcpserver && \
 WORKDIR /app
 
 # -- Dependencies ------------------------------------------------------------
-# Copy requirements before source so Docker layer cache is effective.
-COPY requirements.txt ./
+# requirements.lock.txt is the pip-compiled exact-version lock file.
+# requirements.txt is the human-maintained constraints file (kept for
+# pip-compile regeneration — not used at build time).
+# Regenerate the lock file: docker run --rm -v $(pwd):/work python:3.11-slim \
+#   sh -c 'pip install -q pip-tools && cd /work && pip-compile --no-header \
+#          --strip-extras -o requirements.lock.txt requirements.txt'
+COPY requirements.txt requirements.lock.txt ./
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.lock.txt
 
 # -- Application source ------------------------------------------------------
 COPY *.py ./

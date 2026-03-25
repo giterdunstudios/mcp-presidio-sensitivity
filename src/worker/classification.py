@@ -18,8 +18,14 @@ from typing import Optional
 
 ENTITY_TO_CATEGORY: dict[str, str] = {
     # direct_identifier
+    # DATE_TIME is intentionally excluded: a date/time value alone is not
+    # a direct identifier — it is contextually ambiguous (e.g. "next month",
+    # "quarterly"). It falls into the generic severity path (medium/low).
+    # When DATE_TIME co-occurs with a true identifier (PERSON, US_SSN etc.)
+    # the severity is determined by that identifier, not by DATE_TIME itself.
+    # A dedicated DATE_OF_BIRTH recogniser should be added in Phase 2 for
+    # cases where date context clearly identifies an individual.
     "PERSON": "direct_identifier",
-    "DATE_TIME": "direct_identifier",
     "AGE": "direct_identifier",
     # financial_identifier
     "CREDIT_CARD": "financial_identifier",
