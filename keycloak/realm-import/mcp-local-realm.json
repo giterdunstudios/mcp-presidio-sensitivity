@@ -7,7 +7,8 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
-  "bruteForceProtected": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 60,
 
   "clientScopes": [
     {
