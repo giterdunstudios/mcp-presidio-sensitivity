@@ -54,7 +54,7 @@ WORKER_URL: str = os.environ.get(
 MAX_PAYLOAD_BYTES: int = int(os.environ.get("MAX_PAYLOAD_BYTES", 1_048_576))
 
 # HTTP timeout when calling the Presidio worker (seconds)
-WORKER_TIMEOUT_SECONDS: float = float(os.environ.get("WORKER_TIMEOUT_SECONDS", 30.0))
+WORKER_TIMEOUT_SECONDS: float = float(os.environ.get("WORKER_TIMEOUT_SECONDS", 10.0))
 
 # ---------------------------------------------------------------------------
 # Service identity (used in structured log records)

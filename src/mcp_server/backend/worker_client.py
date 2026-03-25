@@ -109,7 +109,7 @@ async def call_worker(
             extra={"correlation_id": correlation_id},
         )
         raise WorkerError(
-            "SCAN_FAILED",
+            "SCAN_TIMEOUT",
             "The scan worker did not respond within the allowed time.",
         )
     except Exception as exc:
