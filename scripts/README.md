@@ -1,0 +1,138 @@
+# mcp-presidio-sensitivity — Dev Scripts
+
+These scripts are specific to this project. They have the kind cluster name
+(`mcp-presidio`), namespace (`mcp-presidio`), image tags
+(`mcp-presidio-sensitivity:0.1.0`, `presidio-worker:0.1.0`), Keycloak realm
+(`mcp-local`), client credentials, and port mappings (`8000`, `8080`, `8090`)
+hardcoded. They are not generic utilities.
+
+Each script has a detailed `When to use` block in its header.
+
+---
+
+## setup-local.sh
+Bootstraps the mcp-presidio kind cluster from scratch.
+
+**When:** First-time setup, after a WSL2 restart that wiped the cluster, or after
+`--teardown`. NOT for routine code changes — use `rebuild.sh` instead.
+
+After running, always follow up:
+```bash
+./scripts/keycloak-admin.sh set-ttl 60   # enforce DEC-002 token TTL
+./scripts/status.sh                       # confirm stack healthy
+```
+
+```bash
+./scripts/setup-local.sh               # full setup
+./scripts/setup-local.sh --skip-build  # skip image build
+./scripts/setup-local.sh --teardown    # delete the cluster
+```
+
+---
+
+## rebuild.sh
+Rebuilds one or both Docker images, loads them into the mcp-presidio kind cluster,
+and performs a rolling restart.
+
+**When:** After any source change to `src/mcp_server/` or `src/worker/`, after a
+Dockerfile change, or after merging a branch that touches application code.
+Replaces the manual `docker build --no-cache` + `kind load` + `kubectl rollout
+restart` + `kubectl rollout status` sequence.
+
+```bash
+./scripts/rebuild.sh              # rebuild both images (most common)
+./scripts/rebuild.sh mcp          # mcp-presidio-sensitivity image only
+./scripts/rebuild.sh worker       # presidio-worker image only
+```
+
+---
+
+## status.sh
+Full health and compliance check for the mcp-presidio-sensitivity stack.
+
+**When:** Start of every dev session, after a rebuild, before running the demo, or
+any time a service is behaving unexpectedly.
+
+Checks:
+- mcp-presidio kind cluster exists
+- All pods in `mcp-presidio` namespace are Running
+- Keycloak, worker, and MCP server health endpoints
+- Token acquisition and TTL (DEC-002: must be ≤ 60s)
+- RFC 9728: `WWW-Authenticate` carries `resource_metadata`
+- RFC 9728: `/.well-known/oauth-protected-resource` returns valid document
+
+```bash
+./scripts/status.sh
+```
+
+---
+
+## keycloak-admin.sh
+Admin operations against the mcp-local Keycloak realm.
+
+**When:**
+- `status` — verify realm config at session start or after a cluster rebuild
+- `set-ttl 60` — apply DEC-002 after a rebuild (Keycloak may revert to 300s default)
+- `discovery-check` — before any auth-related release or after editing
+  `auth/errors.py` or `config.py`
+
+```bash
+./scripts/keycloak-admin.sh status
+./scripts/keycloak-admin.sh set-ttl 60
+./scripts/keycloak-admin.sh discovery-check
+```
+
+---
+
+## demo.sh
+End-to-end demonstration covering auth boundaries, PII detection, enforcement, and
+observability. Always run `status.sh` first.
+
+**When:** Verify the full request path after a rebuild, demonstrate capabilities to
+stakeholders, or validate a specific scenario.
+
+```bash
+./scripts/demo.sh        # interactive menu
+./scripts/demo.sh 1      # single case (e.g. credit card detection)
+./scripts/demo.sh a      # all cases in sequence — use for Phase 1 sign-off
+```
+
+Demo cases: `0` auth boundary · `1` credit card · `2` name/email/phone ·
+`3` SSN · `4` clean text · `5` date-only · `6` rich payload · `7` oversized
+payload · `8` bad content type · `l` lifecycle trace · `a` all
+
+---
+
+## validate-networkpolicy.sh
+Validates the mcp-presidio NetworkPolicy rules against the live kind cluster.
+Deploys and cleans up a temporary busybox test pod automatically.
+
+**When:** After any change to Helm NetworkPolicy templates, after a cluster rebuild,
+or before Phase 1 exit sign-off (required gate per `planning/decision-log.md` DEC-001).
+
+```bash
+./scripts/validate-networkpolicy.sh
+```
+
+Covers cases 11–20: MCP→worker allowed, non-MCP→worker denied, MCP→Keycloak
+allowed, MCP→internet denied, NetworkPolicy resource presence checks.
+
+---
+
+## Typical session workflow
+
+```bash
+# 1. Start of session — confirm the stack is healthy
+./scripts/status.sh
+
+# 2. After source changes
+./scripts/rebuild.sh mcp       # or worker, or both
+./scripts/status.sh
+
+# 3. After any auth-related change
+./scripts/keycloak-admin.sh discovery-check
+
+# 4. Full validation before Phase 1 sign-off
+./scripts/validate-networkpolicy.sh
+./scripts/demo.sh a
+```
