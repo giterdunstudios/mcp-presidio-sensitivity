@@ -108,7 +108,9 @@ echo ""
 
 "$MCP_UP"      || abort "MCP Server is not reachable. Run ./scripts/status.sh."
 "$KEYCLOAK_UP" || abort "Keycloak is not reachable. Run ./scripts/status.sh."
-"$WORKER_UP"   || abort "Presidio Worker is not reachable. Run ./scripts/status.sh."
+# Worker is NetworkPolicy-restricted (DEC-001): not reachable from host by design.
+# classify.sh communicates with the MCP server only; the MCP server routes to the worker
+# internally. Worker status shown above is informational; absence does not block classification.
 
 # ---------------------------------------------------------------------------
 # Step helpers
