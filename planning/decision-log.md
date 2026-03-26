@@ -104,6 +104,49 @@ the `k3d-mcp-registry:5000` registry prefix into the production values.yaml (not
 values.local.yaml) would permanently couple the production chart to a local dev
 registry. All registry-prefixed values must stay in values.local.yaml only.
 
+### Wave 3 validation findings (2026-03-26)
+
+Confirmed during D1–D6 regression run. Material corrections to assumptions above:
+
+**Flannel enforces NetworkPolicy — Cilium not required for basic enforcement.**
+DEC-004 rationale stated kindnet did not enforce NetworkPolicy and implied Cilium
+was needed. Wave 3 confirmed that k3s v1.30.4+k3s1 with Flannel enforces
+NetworkPolicy ingress rules at the kernel level. `validate-networkpolicy.sh`
+cases 13 and 14 (non-MCP pod → worker denied) now run live and pass. Cilium
+remains the Phase 2 target for eBPF-level L7 identity enforcement, but basic
+NetworkPolicy enforcement is already real without it.
+
+**Registry push address splits into two values.**
+The `k3d-mcp-registry` hostname is resolvable only within the k3d Docker network
+(cluster nodes can reach it). From the host or devtools container, push must use
+`localhost:5000`. Kubernetes manifests reference `k3d-mcp-registry:5000/image`
+(cluster-internal). These are two names for the same registry — the image path
+after the hostname is what matters. Scripts use `REGISTRY_PUSH=localhost:5000`;
+`values.local.yaml` retains `k3d-mcp-registry:5000/` as the repository prefix.
+
+**MCP server NetworkPolicy requires an open external ingress rule.**
+The original NetworkPolicy template only allowed Prometheus scraping on port 8000.
+NodePort traffic (client → serverlb → DNAT → pod) appeared to the NetworkPolicy
+as traffic from an unlabelled source, so it was dropped. Fix: added an ingress
+rule with no `from` selector on port 8000, allowing all external client traffic.
+The worker NetworkPolicy is unchanged — external access to the worker is correctly
+blocked per DEC-001.
+
+**`serverResourceUrl` must be set in `values.local.yaml`.**
+The MCP server defaults `SERVER_RESOURCE_URL` to the cluster-internal service DNS
+name. This causes `resource_metadata` in the 401 WWW-Authenticate header to point
+to an unreachable URL for external clients (RFC 9728 discovery chain breaks for
+any client running outside the cluster). Fix: override to `http://localhost:8000`
+in `values.local.yaml`. Production deployments must set this to the real external
+URL of the MCP server.
+
+**Devtools container pattern established for toolchain isolation.**
+`infrastructure/devtools.Dockerfile` and `scripts/devtools-run.sh` provide a
+pinned toolchain (k3d v5.7.4, kubectl v1.30.0, helm v3.14.4) without host binary
+dependencies. All infrastructure operations route through
+`./scripts/devtools-run.sh <command>`. Host scripts (demo.sh, test.sh, classify.sh)
+run directly since they use Docker (test.sh) or curl/python3 (available on host).
+
 ---
 
 ## DEC-001 — Internal network trust boundary: plain HTTP accepted for Phase 1
