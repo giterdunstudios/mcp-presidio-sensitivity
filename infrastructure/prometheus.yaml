@@ -1,0 +1,97 @@
+# Prometheus — local dev metrics backend for A4 Prometheus/Grafana instrumentation
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: mcp-presidio
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: "mcp-server"
+        static_configs:
+          - targets: ["mcp-presidio-sensitivity.mcp-presidio.svc.cluster.local:8000"]
+        metrics_path: /metrics
+
+      - job_name: "presidio-worker"
+        static_configs:
+          - targets: ["presidio-worker.mcp-presidio.svc.cluster.local:8080"]
+        metrics_path: /metrics
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: mcp-presidio
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.53.0
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.retention.time=1h"
+            - "--storage.tsdb.path=/prometheus"
+          ports:
+            - name: web
+              containerPort: 9090
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: data
+              mountPath: /prometheus
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 200m
+            requests:
+              memory: 128Mi
+              cpu: 50m
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: mcp-presidio
+  labels:
+    app: prometheus
+spec:
+  type: NodePort
+  selector:
+    app: prometheus
+  ports:
+    - name: web
+      port: 9090
+      targetPort: web
+      nodePort: 31090
+      protocol: TCP

@@ -15,3 +15,15 @@ nodes:
   - containerPort: 30800
     hostPort: 8000
     protocol: TCP
+  # Jaeger UI
+  - containerPort: 31686
+    hostPort: 16686
+    protocol: TCP
+  # Prometheus
+  - containerPort: 31090
+    hostPort: 9090
+    protocol: TCP
+  # Grafana
+  - containerPort: 31300
+    hostPort: 3000
+    protocol: TCP

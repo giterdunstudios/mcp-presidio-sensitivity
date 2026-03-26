@@ -11,7 +11,17 @@ spec:
     matchLabels:
       {{- include "mcp-presidio-sensitivity.selectorLabels" . | nindent 6 }}
   policyTypes:
+    - Ingress
     - Egress
+  ingress:
+    # Prometheus — metrics scraping on service port
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8000
   egress:
     # Worker — scan requests
     - to:

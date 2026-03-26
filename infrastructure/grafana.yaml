@@ -1,0 +1,414 @@
+# Grafana — local dev dashboard for A4 Prometheus/Grafana instrumentation
+# Pre-provisioned with Prometheus + Jaeger data sources and operations dashboard
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: mcp-presidio
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        access: proxy
+        url: http://prometheus.mcp-presidio.svc.cluster.local:9090
+        isDefault: true
+
+      - name: Jaeger
+        type: jaeger
+        uid: jaeger
+        access: proxy
+        url: http://jaeger.mcp-presidio.svc.cluster.local:16686
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: mcp-presidio
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-mcp
+  namespace: mcp-presidio
+data:
+  mcp-operations.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "title": "Golden Signals",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "collapsed": false
+        },
+        {
+          "title": "Scan Rate",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum(rate(mcp_scan_completions_total[5m]))",
+            "legendFormat": "scans/sec"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+            }
+          },
+          "options": { "graphMode": "area", "colorMode": "value" }
+        },
+        {
+          "title": "Error Rate",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum(rate(mcp_scan_errors_total[5m])) / (sum(rate(mcp_scan_completions_total[5m])) + sum(rate(mcp_scan_errors_total[5m])))",
+            "legendFormat": "error ratio"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 0.05 }
+                ]
+              }
+            }
+          },
+          "options": { "graphMode": "area", "colorMode": "value" }
+        },
+        {
+          "title": "P95 End-to-End Latency",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "histogram_quantile(0.95, sum(rate(mcp_request_duration_seconds_bucket{path=\"/mcp\"}[5m])) by (le))",
+            "legendFormat": "p95"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 2 },
+                  { "color": "red", "value": 5 }
+                ]
+              }
+            }
+          },
+          "options": { "graphMode": "none", "colorMode": "value" }
+        },
+        {
+          "title": "P95 Presidio Analyze",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "histogram_quantile(0.95, sum(rate(worker_presidio_analyze_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 3 }
+                ]
+              }
+            }
+          },
+          "options": { "graphMode": "none", "colorMode": "value" }
+        },
+        {
+          "title": "Scan Outcomes",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+          "collapsed": false
+        },
+        {
+          "title": "Decision Breakdown",
+          "type": "bargauge",
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum by (decision) (mcp_scan_completions_total)",
+            "legendFormat": "{{decision}}"
+          }],
+          "options": { "orientation": "horizontal", "displayMode": "gradient" }
+        },
+        {
+          "title": "Severity Distribution",
+          "type": "bargauge",
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum by (max_severity_band) (mcp_scan_completions_total)",
+            "legendFormat": "{{max_severity_band}}"
+          }],
+          "options": { "orientation": "horizontal", "displayMode": "gradient" }
+        },
+        {
+          "title": "Scan Errors by Code",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum by (error_code) (rate(mcp_scan_errors_total[5m]))",
+            "legendFormat": "{{error_code}}"
+          }],
+          "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } } }
+        },
+        {
+          "title": "Auth Boundaries",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+          "collapsed": false
+        },
+        {
+          "title": "Auth Decisions Over Time",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 14, "x": 0, "y": 17 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum by (outcome) (rate(mcp_auth_decisions_total[5m]))",
+            "legendFormat": "{{outcome}}"
+          }],
+          "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } } }
+        },
+        {
+          "title": "Auth Deny Rate",
+          "type": "stat",
+          "gridPos": { "h": 8, "w": 10, "x": 14, "y": 17 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum(rate(mcp_auth_decisions_total{outcome=~\"deny.*\"}[5m])) / sum(rate(mcp_auth_decisions_total[5m]))",
+            "legendFormat": "deny rate"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 0.2 },
+                  { "color": "red", "value": 0.5 }
+                ]
+              }
+            }
+          },
+          "options": { "graphMode": "area", "colorMode": "value" }
+        },
+        {
+          "title": "Worker Internals",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+          "collapsed": false
+        },
+        {
+          "title": "Presidio Analyze Latency",
+          "type": "heatmap",
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 26 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum(rate(worker_presidio_analyze_duration_seconds_bucket[5m])) by (le)",
+            "format": "heatmap",
+            "legendFormat": "{{le}}"
+          }]
+        },
+        {
+          "title": "Findings Per Scan",
+          "type": "histogram",
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 26 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum(rate(worker_findings_per_scan_bucket[5m])) by (le)",
+            "format": "heatmap",
+            "legendFormat": "{{le}}"
+          }]
+        },
+        {
+          "title": "Guard Rejections",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 26 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum by (error_code) (rate(worker_scan_rejections_total[5m]))",
+            "legendFormat": "{{error_code}}"
+          }]
+        },
+        {
+          "title": "Traces",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+          "collapsed": false
+        },
+        {
+          "title": "Recent Traces — MCP Server",
+          "type": "traces",
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
+          "datasource": { "type": "jaeger", "uid": "jaeger" },
+          "targets": [{
+            "query": "mcp-presidio-sensitivity",
+            "queryType": "search"
+          }],
+          "options": { "spanBar": { "type": "Duration" } }
+        },
+        {
+          "title": "Service Info",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+          "collapsed": false
+        },
+        {
+          "title": "Build Info",
+          "type": "table",
+          "gridPos": { "h": 4, "w": 24, "x": 0, "y": 46 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "mcp_build_info", "legendFormat": "MCP Server", "format": "table", "instant": true },
+            { "expr": "worker_build_info", "legendFormat": "Worker", "format": "table", "instant": true }
+          ],
+          "transformations": [
+            { "id": "merge", "options": {} },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true },
+                "renameByName": { "version": "Version", "environment": "Environment" }
+              }
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["mcp", "presidio", "observability"],
+      "templating": { "list": [] },
+      "time": { "from": "now-30m", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "MCP Presidio Sensitivity — Operations",
+      "uid": "mcp-presidio-ops",
+      "version": 1
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: mcp-presidio
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.1.0
+          env:
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: Admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: admin
+          ports:
+            - name: web
+              containerPort: 3000
+              protocol: TCP
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboard-mcp
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/grafana
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 200m
+            requests:
+              memory: 128Mi
+              cpu: 50m
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboards-provider
+          configMap:
+            name: grafana-dashboards-provider
+        - name: dashboard-mcp
+          configMap:
+            name: grafana-dashboard-mcp
+        - name: data
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: mcp-presidio
+  labels:
+    app: grafana
+spec:
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - name: web
+      port: 3000
+      targetPort: web
+      nodePort: 31300
+      protocol: TCP

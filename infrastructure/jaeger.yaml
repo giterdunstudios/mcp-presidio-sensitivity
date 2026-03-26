@@ -52,7 +52,7 @@ metadata:
   labels:
     app: jaeger
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: jaeger
   ports:
@@ -63,4 +63,5 @@ spec:
     - name: ui
       port: 16686
       targetPort: ui
+      nodePort: 31686
       protocol: TCP
