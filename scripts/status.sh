@@ -41,11 +41,21 @@ header() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 # Cluster
 # ---------------------------------------------------------------------------
 header "Cluster"
-if k3d cluster list 2>/dev/null | grep -q "^$CLUSTER_NAME "; then
-  pass "k3d cluster '$CLUSTER_NAME' exists"
+if command -v k3d &>/dev/null; then
+  if k3d cluster list 2>/dev/null | grep -q "^$CLUSTER_NAME "; then
+    pass "k3d cluster '$CLUSTER_NAME' exists"
+  else
+    fail "k3d cluster '$CLUSTER_NAME' not found — run setup-local.sh"
+    exit 1
+  fi
 else
-  fail "k3d cluster '$CLUSTER_NAME' not found — run setup-local.sh"
-  exit 1
+  # k3d not on host PATH — fall back to kubectl reachability check
+  if kubectl get nodes &>/dev/null; then
+    pass "cluster reachable via kubectl (k3d not on host PATH — use devtools-run.sh for cluster management)"
+  else
+    fail "cluster not reachable — run: ./scripts/devtools-run.sh ./scripts/setup-local.sh"
+    exit 1
+  fi
 fi
 
 # ---------------------------------------------------------------------------
