@@ -10,7 +10,7 @@ Coordination items are tracked in `planning/council-workboard.md`.
 When an item is proposed and no role schedules it for valid project reasons,
 it must be raised at the next council meeting per §5c.
 
-**Last updated:** 2026-03-26
+**Last updated:** 2026-03-26 (Wave 3 complete)
 
 ---
 
@@ -43,7 +43,7 @@ it must be raised at the next council meeting per §5c.
 | BP-006 | Test coverage audit: map 42 existing test cases to solution behaviours | `proposed` | Engineering Practices Lead + Technical Implementation Lead | Phase 1 exit prep | Identify untested behaviours before Phase 1 exit. Needs coordination (see workboard). |
 | BP-007 | Integration test for RFC 9728 discovery chain (not just unit) | `proposed` | Technical Implementation Lead | Phase 1 exit prep | `auth-test.sh` covers auth cases; no automated test for full discovery chain. |
 | BP-008 | Synthetic test corpus coverage gate: require corpus case for each new entity type added | `proposed` | Detection / Data Researcher (when active) | Phase 1+ | Coordinate with Engineering Practices Lead on acceptance threshold. |
-| BP-009 | Wave 3 regression validation (D1–D6) — k3d migration | `in_progress` | Technical Implementation Lead | Pre-Phase 2 gate | Not a best practices item per se but tracked here for gate visibility. Passes when all 6 scripts green. |
+| BP-009 | Wave 3 regression validation (D1–D6) — k3d migration | `complete` | Technical Implementation Lead | Pre-Phase 2 gate | All 6 scripts green (2026-03-26). Pre-Phase 2 gate cleared. |
 
 ---
 
@@ -63,7 +63,7 @@ it must be raised at the next council meeting per §5c.
 |----|------|--------|-----------|-------|-------|
 | BP-013 | Document current delta: k3d local vs Phase 2 target production topology | `proposed` | Engineering Practices Lead + Technical Implementation Lead | Before Phase 2 scope opens | Known delta: no Istio, no Cilium enforcement, no mTLS, single-node. Needs formal baseline. Needs coordination (see workboard). |
 | BP-014 | Define acceptable parity threshold: what cannot be simplified away | `proposed` | Engineering Practices Lead + Product/Scope Lead | Before Phase 2 scope opens | Rule of thumb needed: "if X is not present locally, you cannot test Y." Needs coordination. |
-| BP-015 | Validate NetworkPolicy enforcement is real under k3d/k3s CNI (kindnet → Flannel change) | `proposed` | Security/Privacy Lead + Engineering Practices Lead | Wave 3 | kindnet and Flannel have different enforcement characteristics. Confirm `validate-networkpolicy.sh` still meaningful under k3s. |
+| BP-015 | Validate NetworkPolicy enforcement is real under k3d/k3s CNI (kindnet → Flannel change) | `complete` | Security/Privacy Lead + Engineering Practices Lead | Wave 3 | Flannel in k3s enforces NetworkPolicy ingress — confirmed under k3s v1.30.4+k3s1. Cases 13+14 enabled in `validate-networkpolicy.sh`. `validate-networkpolicy.sh` results are live enforcement, not just object presence checks. |
 
 ---
 

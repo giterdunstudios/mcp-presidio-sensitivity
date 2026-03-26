@@ -104,15 +104,15 @@ blocked. See `planning/decision-log.md` DEC-004 for full rationale and work brea
 flowchart LR
     P1EXIT(["Phase 1 Exit"])
 
-    GK{{"Pre-Phase 2 Gate\nk3d migration complete\nAll validation scripts pass\n⬜ PENDING"}}
+    GK{{"Pre-Phase 2 Gate\nk3d migration complete\nAll validation scripts pass\n✅ CLEARED"}}
 
-    KA["A · Cluster + Registry\nk3d-config.yaml\nsetup-local.sh updated\nRegistry on port 5000\nStatus: ⬜"]
+    KA["A · Cluster + Registry\nk3d-config.yaml\nsetup-local.sh updated\nRegistry on port 5000\nStatus: ✅"]
 
-    KB["B · Image Workflow\nrebuild.sh: kind load → docker push\nvalues.local.yaml: pullPolicy + registry\nStatus: ⬜"]
+    KB["B · Image Workflow\nrebuild.sh: kind load → docker push\nvalues.local.yaml: pullPolicy + registry\nStatus: ✅"]
 
-    KC["C · Supporting Scripts\nstatus.sh · README · remove kind-config\nStatus: ⬜"]
+    KC["C · Supporting Scripts\nstatus.sh · README · remove kind-config\nStatus: ✅"]
 
-    KD["D · Full Regression\nsetup · status · test · auth\nnetworkpolicy · demo a\nStatus: ⬜"]
+    KD["D · Full Regression\nsetup · status · test · auth\nnetworkpolicy · demo a\nStatus: ✅"]
 
     KE["E · Cilium CNI (optional)\nDisable Flannel · install Cilium\nRe-validate NetworkPolicy\nStatus: ⬜ Phase 2 only"]
 
@@ -128,12 +128,22 @@ flowchart LR
     KE --> P2START
 
     classDef gate fill:#e8a000,stroke:#b07800,color:#000,font-weight:bold
+    classDef done fill:#1a7a3a,stroke:#0f5228,color:#fff
     classDef work fill:#1168bd,stroke:#0a4d8c,color:#fff
     classDef optional fill:#555,stroke:#333,color:#ccc
     classDef terminal fill:#1a1a2e,stroke:#555,color:#fff
 
     class GK gate
-    class KA,KB,KC,KD work
+    class KA,KB,KC,KD done
     class KE optional
     class P1EXIT,P2START terminal
 ```
+
+**Wave 3 findings (2026-03-26):**
+- k3s/Flannel enforces NetworkPolicy ingress — cases 13+14 in `validate-networkpolicy.sh` now active (previously skipped under kindnet)
+- MCP server NetworkPolicy required an open ingress rule on port 8000 for external clients — added
+- Registry push from host uses `localhost:5000`; `k3d-mcp-registry:5000` is cluster-internal only
+- `infrastructure/devtools.Dockerfile` added (Alpine + k3d v5.7.4 + kubectl + helm + docker-cli + python3)
+- `scripts/devtools-run.sh` added — runs scripts inside devtools container with socket + kube + project mounts
+- `serverResourceUrl=http://localhost:8000` added to `helm/mcp-server/values.local.yaml` — fixes RFC 9728 resource_metadata for external clients
+- All scripts updated for container-awareness (skip `sg docker` when `/.dockerenv` present)

@@ -14,11 +14,10 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 - Phase 1 exit sign-off — pending Security/Privacy Lead and Engineering Practices Lead sign-off gates
 
 ### Queued
-- Pre-Phase 2 gate: confirm k3d migration Wave 3 (D1–D6) validation pass before Phase 2 scope is opened
-- Phase 2 scope definition — blocked until pre-Phase 2 gate clears
+- Phase 2 scope definition — pre-Phase 2 gate cleared; unblocked pending Phase 1 exit sign-off
 
 ### Needs coordination
-- Phase 1 exit criteria review — requires: Security/Privacy Lead, Engineering Practices Lead; timing: after Wave 3 validation passes
+- Phase 1 exit criteria review — requires: Security/Privacy Lead, Engineering Practices Lead; timing: now unblocked (Wave 3 passed)
 
 ---
 
@@ -40,21 +39,26 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 ## Technical Implementation Lead
 
 ### Active
-- None — awaiting Wave 3 (D1–D6) validation to confirm k3d migration complete
+- None
 
 ### Queued
-- Wave 3 validation (D1–D6): `./scripts/setup-local.sh` → `status.sh` → `test.sh` → `auth-test.sh` → `validate-networkpolicy.sh` → `demo.sh a`
 - Phase 2 design: Istio install into k3d cluster (DEC-003, DEC-004 Phase E)
 
+### Completed this session
+- Wave 3 validation (D1–D6): all 6 scripts green ✅
+  - Flannel NetworkPolicy enforcement confirmed — cases 13+14 now live
+  - MCP server ingress rule added for external clients
+  - `devtools.Dockerfile` + `devtools-run.sh` added
+  - `serverResourceUrl` added to `values.local.yaml`
+
 ### Needs coordination
-- Cilium CNI (Phase E, optional): requires Platform / Cluster Infrastructure Lead if still active; timing: Phase 2 start
+- Cilium CNI (Phase E, optional): Platform / Cluster Infrastructure Lead deactivated; timing: Phase 2 start, coordinate with Security/Privacy Lead
 
 ---
 
 ## Engineering Practices Lead
 
 ### Active
-- Best practices backlog seeded (`planning/best-practices-backlog.md`) — complete
 - Monitoring team workflow health across all roles post-council ratification
 
 ### Queued
@@ -62,6 +66,11 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 - Dev/prod parity baseline: document current delta between k3d local and Phase 2 target topology
 - Onboarding review: validate that a new contributor can reach a working stack using only `CLAUDE.md` and `scripts/README.md`
 - Disaster recovery runbook for local dev stack
+- BP-005: pin exact k3d version in CLAUDE.md (now that Wave 3 is complete, installed version is known)
+
+### Completed this session
+- BP-009 (Wave 3 regression D1–D6): complete ✅
+- BP-015 (Flannel NetworkPolicy enforcement): complete ✅ — Flannel in k3s enforces NetworkPolicy ingress; cases 13+14 now active in `validate-networkpolicy.sh`
 
 ### Needs coordination
 - Test coverage gap review — requires: Technical Implementation Lead; timing: Phase 1 exit prep
@@ -81,12 +90,14 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 
 ## Platform / Cluster Infrastructure Lead
 
-### Active
-- k3d migration Wave 1 + Wave 2: complete
-- Awaiting Wave 3 validation (D1–D6) to confirm deactivation
+### Status: DEACTIVATED (2026-03-26)
 
-### Queued
-- Deactivation: pending Wave 3 pass
+Wave 3 validation (D1–D6) passed. k3d migration complete. Burst role deactivated per handoff contract in `planning/k3d-migration-spec.md`.
+
+### Completed
+- Wave 1: k3d-config.yaml, setup-local.sh, registry workflow
+- Wave 2: rebuild.sh, values.local.yaml (pullPolicy + registry prefix)
+- Wave 3: status.sh, scripts/README.md, kind-config.yaml removed; full D1–D6 regression passed
 
 ### Needs coordination
-- None pending deactivation
+- None — deactivated
