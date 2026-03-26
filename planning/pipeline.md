@@ -21,7 +21,7 @@ flowchart TB
 
     G3{{"Gate 3\nPrometheus spec scope\nProduct Lead confirm\n✅ CLEARED"}}
 
-    A4I["A4 · Prometheus/Grafana Impl\n/metrics endpoint · Grafana dashboard\nJaeger data source wired\nStatus: ⬜ NEXT"]
+    A4I["A4 · Prometheus/Grafana Impl\n/metrics endpoint · Grafana dashboard\nJaeger data source wired\nStatus: ✅ COMPLETE"]
 
     EXIT(["Phase 1 Exit\nSec Lead + Product Lead sign-off"])
 
@@ -41,8 +41,7 @@ flowchart TB
     classDef terminal fill:#1a1a2e,stroke:#555,color:#fff
 
     class G0,G1,G3 gate
-    class A1,A2,A3,A4S done
-    class A4I work
+    class A1,A2,A3,A4S,A4I done
     class EXIT terminal
 ```
 
