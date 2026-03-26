@@ -37,7 +37,7 @@ from typing import Any, Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -53,6 +53,15 @@ from authorization.policy import is_authorized
 from audit.trail import write_audit_record
 from backend.worker_client import WorkerError, call_worker
 from observability.logging import configure_logging, log_request
+from observability.metrics import (
+    AUTH_DECISIONS,
+    REQUEST_DURATION,
+    SCAN_COMPLETIONS,
+    SCAN_ERRORS,
+    set_build_info,
+    timer,
+    WORKER_CALL_DURATION,
+)
 from observability.tracing import configure_tracing, get_tracer
 from opentelemetry.trace import SpanKind, StatusCode
 
@@ -154,11 +163,16 @@ async def classify_payload_sensitivity(
                 caller_subject=caller_subject,
                 result=result,
             )
+            SCAN_COMPLETIONS.labels(
+                decision=result.decision,
+                max_severity_band=result.max_severity_band or "none",
+            ).inc()
             span.set_attribute("scan_id", result.scan_id)
             span.set_attribute("decision", result.decision)
             return result.model_dump(mode="json")
         except WorkerError as exc:
             span.set_status(StatusCode.ERROR, exc.error_code)
+            SCAN_ERRORS.labels(error_code=exc.error_code).inc()
             write_audit_record(
                 correlation_id=effective_workflow_id,
                 caller_subject=caller_subject,
@@ -181,6 +195,7 @@ async def lifespan(app: FastAPI):
         service_name="mcp-presidio-sensitivity",
         service_version=config.SERVICE_VERSION,
     )
+    set_build_info(version=config.SERVICE_VERSION, environment=config.ENVIRONMENT)
     logger.info(
         "MCP server starting",
         extra={
@@ -231,7 +246,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     """
 
     EXEMPT_PATHS: frozenset[str] = frozenset(
-        {"/health", "/.well-known/oauth-protected-resource"}
+        {"/health", "/.well-known/oauth-protected-resource", "/metrics"}
     )
 
     async def dispatch(self, request: Request, call_next):
@@ -252,8 +267,11 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # ------------------------------------------------------------------
         # Exempt paths — no auth required
         # ------------------------------------------------------------------
-        if path in self.EXEMPT_PATHS:
+        if path in self.EXEMPT_PATHS or path.rstrip("/") in self.EXEMPT_PATHS:
             request.state.auth_decision = "exempt"
+            # Only count non-infrastructure exempt paths to avoid probe noise
+            if path not in ("/health", "/metrics"):
+                AUTH_DECISIONS.labels(outcome="exempt").inc()
             response = await call_next(request)
             _current_correlation_id.reset(token)
             _current_caller_subject.reset(caller_subject_token)
@@ -277,6 +295,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 claims = verify_token(request.headers.get("Authorization"))
             except TokenMissingError:
                 span.set_status(StatusCode.ERROR, "missing token")
+                AUTH_DECISIONS.labels(outcome="deny_401").inc()
                 duration_ms = (time.monotonic() - start_time) * 1000
                 log_request(
                     logger=logger,
@@ -291,6 +310,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 return build_401_response("invalid_token")
             except TokenInvalidError:
                 span.set_status(StatusCode.ERROR, "invalid token")
+                AUTH_DECISIONS.labels(outcome="deny_401").inc()
                 duration_ms = (time.monotonic() - start_time) * 1000
                 log_request(
                     logger=logger,
@@ -328,6 +348,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                 )
                 if not authorized:
                     span.set_status(StatusCode.ERROR, "insufficient scope")
+                    AUTH_DECISIONS.labels(outcome="deny_403").inc()
                     duration_ms = (time.monotonic() - start_time) * 1000
                     log_request(
                         logger=logger,
@@ -342,6 +363,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                     return build_403_response(required_scope)
 
             request.state.auth_decision = "allow"
+            AUTH_DECISIONS.labels(outcome="allow").inc()
 
             # --------------------------------------------------------------
             # Forward to route handler
@@ -350,6 +372,10 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             span.set_attribute("http.status_code", response.status_code)
 
             duration_ms = (time.monotonic() - start_time) * 1000
+            REQUEST_DURATION.labels(
+                path=path, status_code=str(response.status_code)
+            ).observe(duration_ms / 1000)
+
             worker_status = getattr(request.state, "worker_status", None)
 
             log_request(
@@ -400,6 +426,22 @@ async def oauth_protected_resource() -> dict:
         ],
     }
 
+
+# ---------------------------------------------------------------------------
+# Prometheus metrics endpoint — no auth required (cluster-internal only)
+# ---------------------------------------------------------------------------
+
+from prometheus_client import make_asgi_app as _prometheus_app  # noqa: E402
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST  # noqa: E402
+
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus metrics — served directly to avoid mount/trailing-slash issues."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+app.mount("/metrics", _prometheus_app())
 
 # ---------------------------------------------------------------------------
 # Mount MCP SDK application

@@ -21,7 +21,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -30,6 +30,16 @@ from analyzer import get_engine
 from minimizer import minimize
 from models import ErrorResponse, ScanRequest, ScanResponse
 from observability.logging import configure_logging
+from observability.metrics import (
+    FINDINGS_PER_SCAN,
+    PRESIDIO_ANALYZE_DURATION,
+    SCAN_COMPLETIONS,
+    SCAN_DURATION,
+    SCAN_FAILURES,
+    SCAN_REJECTIONS,
+    set_build_info,
+    timer,
+)
 from observability.tracing import configure_tracing, get_tracer
 from opentelemetry.propagate import extract as otel_extract
 from opentelemetry.trace import SpanKind, StatusCode
@@ -56,6 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         service_name="presidio-worker",
         service_version=config.SERVICE_VERSION,
     )
+    set_build_info(version=config.SERVICE_VERSION, environment=config.ENVIRONMENT)
     logger.info("Pre-warming Presidio AnalyzerEngine")
     get_engine(min_score_threshold=config.MIN_SCORE_THRESHOLD)
     logger.info("Worker startup complete")
@@ -76,6 +87,22 @@ app = FastAPI(
     openapi_url=None,
 )
 
+
+# ---------------------------------------------------------------------------
+# Prometheus metrics endpoint
+# ---------------------------------------------------------------------------
+
+from prometheus_client import make_asgi_app as _prometheus_app  # noqa: E402
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST  # noqa: E402
+
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus metrics — served directly to avoid mount/trailing-slash issues."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+app.mount("/metrics", _prometheus_app())
 
 # ---------------------------------------------------------------------------
 # Health probe
@@ -110,13 +137,14 @@ async def scan(request: Request) -> JSONResponse:
     except Exception:
         _trace_ctx = None
 
-    with get_tracer().start_as_current_span(
-        "worker.scan",
-        context=_trace_ctx,
-        kind=SpanKind.SERVER,
-    ) as span:
-        span.set_attribute("scan_id", str(scan_id))
-        return await _scan_inner(request, scan_id, span)
+    with timer(SCAN_DURATION):
+        with get_tracer().start_as_current_span(
+            "worker.scan",
+            context=_trace_ctx,
+            kind=SpanKind.SERVER,
+        ) as span:
+            span.set_attribute("scan_id", str(scan_id))
+            return await _scan_inner(request, scan_id, span)
 
 
 async def _scan_inner(request: Request, scan_id: uuid.UUID, span: Any) -> JSONResponse:
@@ -129,6 +157,7 @@ async def _scan_inner(request: Request, scan_id: uuid.UUID, span: Any) -> JSONRe
 
     if declared_type not in config.SUPPORTED_CONTENT_TYPES:
         span.set_status(StatusCode.ERROR, "UNSUPPORTED_CONTENT_TYPE")
+        SCAN_REJECTIONS.labels(error_code="UNSUPPORTED_CONTENT_TYPE").inc()
         logger.warning(
             "scan rejected: unsupported content-type",
             extra={"scan_id": str(scan_id), "content_type": declared_type},
@@ -150,6 +179,7 @@ async def _scan_inner(request: Request, scan_id: uuid.UUID, span: Any) -> JSONRe
 
     if len(body_bytes) > config.MAX_PAYLOAD_BYTES:
         span.set_status(StatusCode.ERROR, "PAYLOAD_TOO_LARGE")
+        SCAN_REJECTIONS.labels(error_code="PAYLOAD_TOO_LARGE").inc()
         logger.warning(
             "scan rejected: payload too large",
             extra={"scan_id": str(scan_id), "size_bytes": len(body_bytes)},
@@ -171,6 +201,7 @@ async def _scan_inner(request: Request, scan_id: uuid.UUID, span: Any) -> JSONRe
         scan_request = ScanRequest.model_validate_json(body_bytes)
     except (ValidationError, Exception):
         span.set_status(StatusCode.ERROR, "INVALID_REQUEST_SCHEMA")
+        SCAN_REJECTIONS.labels(error_code="INVALID_REQUEST_SCHEMA").inc()
         # Do not include body_bytes or any parsed fragment in the log message.
         logger.warning("scan rejected: invalid request schema", extra={"scan_id": str(scan_id)})
         return JSONResponse(
@@ -191,6 +222,7 @@ async def _scan_inner(request: Request, scan_id: uuid.UUID, span: Any) -> JSONRe
     # ------------------------------------------------------------------
     if scan_request.content_type not in config.SUPPORTED_CONTENT_TYPES:
         span.set_status(StatusCode.ERROR, "UNSUPPORTED_CONTENT_TYPE")
+        SCAN_REJECTIONS.labels(error_code="UNSUPPORTED_CONTENT_TYPE").inc()
         logger.warning(
             "scan rejected: unsupported content_type field",
             extra={"scan_id": str(scan_id), "content_type": scan_request.content_type},
@@ -216,12 +248,14 @@ async def _scan_inner(request: Request, scan_id: uuid.UUID, span: Any) -> JSONRe
     language = scan_request.language or config.DEFAULT_LANGUAGE
     try:
         engine = get_engine(min_score_threshold=config.MIN_SCORE_THRESHOLD)
-        with get_tracer().start_as_current_span("presidio.analyze") as analyze_span:
-            # SECURITY: language code is safe metadata; content is never an attribute
-            analyze_span.set_attribute("language", language)
-            findings = engine.analyze(text=scan_request.content, language=language)
+        with timer(PRESIDIO_ANALYZE_DURATION):
+            with get_tracer().start_as_current_span("presidio.analyze") as analyze_span:
+                # SECURITY: language code is safe metadata; content is never an attribute
+                analyze_span.set_attribute("language", language)
+                findings = engine.analyze(text=scan_request.content, language=language)
     except Exception:
         span.set_status(StatusCode.ERROR, "SCAN_FAILED")
+        SCAN_FAILURES.inc()
         # Exception message must not include scan_request.content.
         logger.exception(
             "scan failed: analysis engine error (payload content suppressed)",
@@ -253,6 +287,12 @@ async def _scan_inner(request: Request, scan_id: uuid.UUID, span: Any) -> JSONRe
     span.set_attribute("decision", result.decision)
     span.set_attribute("max_severity_band", result.max_severity_band)
     span.set_attribute("findings_count", result.confidence_summary.findings_count)
+
+    SCAN_COMPLETIONS.labels(
+        decision=result.decision,
+        max_severity_band=result.max_severity_band or "none",
+    ).inc()
+    FINDINGS_PER_SCAN.observe(result.confidence_summary.findings_count)
 
     logger.info(
         "scan completed",

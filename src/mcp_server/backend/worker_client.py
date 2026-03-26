@@ -22,6 +22,7 @@ from pydantic import ValidationError
 
 import config
 from backend.models import WorkerRequestMetadata, WorkerScanRequest, WorkerScanResponse
+from observability.metrics import WORKER_CALL_DURATION
 
 logger = logging.getLogger("mcp-presidio-sensitivity.backend")
 
@@ -103,6 +104,8 @@ async def call_worker(
 
     scan_url = f"{config.WORKER_URL.rstrip('/')}/scan"
 
+    import time as _time
+    _worker_start = _time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=config.WORKER_TIMEOUT_SECONDS) as client:
             response = await client.post(
@@ -110,7 +113,9 @@ async def call_worker(
                 content=request_body.model_dump_json(),
                 headers=headers,
             )
+        WORKER_CALL_DURATION.observe(_time.monotonic() - _worker_start)
     except httpx.TimeoutException:
+        WORKER_CALL_DURATION.observe(_time.monotonic() - _worker_start)
         logger.warning(
             "worker call timed out",
             extra={"correlation_id": correlation_id},
@@ -120,6 +125,7 @@ async def call_worker(
             "The scan worker did not respond within the allowed time.",
         )
     except Exception as exc:
+        WORKER_CALL_DURATION.observe(_time.monotonic() - _worker_start)
         logger.warning(
             "worker call failed: %s",
             type(exc).__name__,
