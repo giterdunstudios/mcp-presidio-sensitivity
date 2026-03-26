@@ -21,10 +21,17 @@
 #                     Walks the full RFC 9728 four-step discovery chain and
 #                     asserts every step is spec-compliant.
 #
+#   token           — Acquire and decode a client token. Shows issuer, subject,
+#                     scope, iat, exp, and TTL remaining. Asserts DEC-002
+#                     (≤ 60s). Use --raw to also print the Bearer token for
+#                     use in curl commands.
+#
 # Usage:
 #   ./scripts/keycloak-admin.sh status
 #   ./scripts/keycloak-admin.sh set-ttl 60
 #   ./scripts/keycloak-admin.sh discovery-check
+#   ./scripts/keycloak-admin.sh token
+#   ./scripts/keycloak-admin.sh token --raw
 #
 # Prerequisites:
 #   - Keycloak running and accessible at http://localhost:8080
@@ -57,6 +64,17 @@ admin_token() {
     -d "grant_type=password&client_id=admin-cli&username=${ADMIN_USER}&password=${ADMIN_PASSWORD}" \
     2>/dev/null) || { echo "ERROR: could not reach Keycloak at $KEYCLOAK" >&2; exit 1; }
   echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])"
+}
+
+# ---------------------------------------------------------------------------
+# Client token — full JSON response; callers extract access_token or expires_in
+# ---------------------------------------------------------------------------
+
+client_token() {
+  curl -sf --max-time 10 -X POST \
+    "$KEYCLOAK/realms/$REALM/protocol/openid-connect/token" \
+    -d "grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&scope=tools:classify.submit" \
+    2>/dev/null || { echo "ERROR: could not obtain client token from Keycloak" >&2; exit 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -122,10 +140,7 @@ cmd_set_ttl() {
     info "Verified live value: ${actual_ttl}s"
     # Test a real token
     local token_ttl
-    token_ttl=$(curl -sf --max-time 10 -X POST \
-      "$KEYCLOAK/realms/$REALM/protocol/openid-connect/token" \
-      -d "grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&scope=tools:classify.submit" \
-      2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('expires_in'))")
+    token_ttl=$(client_token | python3 -c "import sys,json; print(json.load(sys.stdin).get('expires_in'))")
     info "New token expires_in:  ${token_ttl}s"
   else
     fail "Failed to update TTL (HTTP $http_code)"
@@ -186,10 +201,7 @@ cmd_discovery_check() {
 
   # Step 4: Token can actually be obtained from the discovered endpoint
   local token_response expires_in
-  token_response=$(curl -sf --max-time 10 -X POST \
-    "$KEYCLOAK/realms/$REALM/protocol/openid-connect/token" \
-    -d "grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&scope=tools:classify.submit" \
-    2>/dev/null)
+  token_response=$(client_token 2>/dev/null) || token_response=""
   expires_in=$(echo "$token_response" | python3 -c "import sys,json; print(json.load(sys.stdin).get('expires_in','ERROR'))" 2>/dev/null || echo "ERROR")
   if [[ "$expires_in" != "ERROR" ]]; then
     pass "Step 4 — token obtained from discovered endpoint (expires_in: ${expires_in}s)"
@@ -210,6 +222,50 @@ cmd_discovery_check() {
 }
 
 # ---------------------------------------------------------------------------
+# Subcommand: token
+# ---------------------------------------------------------------------------
+
+cmd_token() {
+  local raw=false
+  [[ "${1:-}" == "--raw" ]] && raw=true
+
+  header "Token: $CLIENT_ID"
+  local response token expires_in
+  response=$(client_token)
+  token=$(echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+  expires_in=$(echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin).get('expires_in','?'))")
+
+  echo "$token" | python3 -c "
+import sys, json, base64, datetime, time
+token = sys.stdin.read().strip()
+parts = token.split('.')
+payload = parts[1] + '=' * (-len(parts[1]) % 4)
+claims = json.loads(base64.urlsafe_b64decode(payload))
+now = int(time.time())
+exp = claims.get('exp', 0)
+iat = claims.get('iat', 0)
+fmt = lambda ts: datetime.datetime.utcfromtimestamp(ts).strftime('%Y-%m-%dT%H:%M:%SZ')
+print('  iss:           ' + claims.get('iss', '?'))
+print('  sub:           ' + claims.get('sub', '?'))
+print('  scope:         ' + claims.get('scope', '?'))
+print('  iat:           ' + fmt(iat))
+print('  exp:           ' + fmt(exp))
+print('  ttl_remaining: ' + str(exp - now) + 's')
+"
+
+  if [[ "$expires_in" =~ ^[0-9]+$ ]] && [[ "$expires_in" -gt 60 ]]; then
+    fail "DEC-002: expires_in=${expires_in}s exceeds 60s"
+  else
+    pass "DEC-002: expires_in=${expires_in}s (≤ 60s)"
+  fi
+
+  if $raw; then
+    header "Raw Token"
+    echo "$token"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -220,8 +276,9 @@ case "$CMD" in
   status)           cmd_status ;;
   set-ttl)          cmd_set_ttl "$@" ;;
   discovery-check)  cmd_discovery_check ;;
+  token)            cmd_token "$@" ;;
   *)
-    echo "Usage: $0 {status|set-ttl <seconds>|discovery-check}" >&2
+    echo "Usage: $0 {status|set-ttl <seconds>|discovery-check|token [--raw]}" >&2
     exit 1
     ;;
 esac

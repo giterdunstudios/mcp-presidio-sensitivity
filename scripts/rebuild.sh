@@ -5,12 +5,14 @@
 # When to use:
 #   - After any Python source change to src/mcp_server/ or src/worker/
 #   - After any Dockerfile change
+#   - After any Helm chart change (values.yaml, templates/) — helm upgrade
+#     runs automatically so config changes reach the cluster
 #   - When a pod is running stale code (imageID in kubectl describe doesn't
 #     match the locally built sha256)
-#   - After merging a branch that changes application code
+#   - After merging a branch that changes application code or chart config
 #   Always use this instead of manual docker build + kind load + rollout
-#   commands — it ensures --no-cache, correct image tags, and waits for
-#   rollout completion before returning.
+#   commands — it ensures --no-cache, correct image tags, helm config sync,
+#   and waits for rollout completion before returning.
 #
 # Usage:
 #   ./scripts/rebuild.sh              # rebuild both images (most common)
@@ -106,6 +108,31 @@ elif $BUILD_WORKER; then
   log "Loading $WORKER_IMAGE into kind cluster..."
   kind load docker-image "$WORKER_IMAGE" --name "$CLUSTER_NAME"
   log "$WORKER_IMAGE loaded"
+fi
+
+# ---------------------------------------------------------------------------
+# Helm upgrade — apply config changes (values.yaml, templates) alongside
+# the new image. Runs before the rolling restart so the pod spec is current
+# when the restart fires. The image tag is static (0.1.0) so helm upgrade
+# alone does not trigger a rollout; kubectl rollout restart handles that.
+# ---------------------------------------------------------------------------
+
+if $BUILD_MCP; then
+  log "Helm upgrade: mcp-presidio-sensitivity..."
+  helm upgrade --install mcp-presidio-sensitivity "$PROJECT_ROOT/helm/mcp-server" \
+    -f "$PROJECT_ROOT/helm/mcp-server/values.yaml" \
+    -f "$PROJECT_ROOT/helm/mcp-server/values.local.yaml" \
+    --namespace "$NAMESPACE" \
+    --timeout 120s
+fi
+
+if $BUILD_WORKER; then
+  log "Helm upgrade: presidio-worker..."
+  helm upgrade --install presidio-worker "$PROJECT_ROOT/helm/presidio-worker" \
+    -f "$PROJECT_ROOT/helm/presidio-worker/values.yaml" \
+    -f "$PROJECT_ROOT/helm/presidio-worker/values.local.yaml" \
+    --namespace "$NAMESPACE" \
+    --timeout 180s
 fi
 
 # ---------------------------------------------------------------------------

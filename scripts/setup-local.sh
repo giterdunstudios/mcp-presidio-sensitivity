@@ -10,7 +10,7 @@
 # What this does:
 #   1. Creates the kind cluster with host port mappings
 #   2. Creates the mcp-presidio namespace
-#   3. Deploys Keycloak via Helm (bitnami/keycloak) with realm import
+#   3. Deploys Keycloak via kubectl apply (infrastructure/keycloak-local.yaml)
 #   4. Loads the presidio-worker image and deploys it via Helm
 #   5. Loads the mcp-presidio-sensitivity image and deploys it via Helm (if built)
 #   6. Waits for all pods to be ready
@@ -79,6 +79,16 @@ if $TEARDOWN; then
   log "Done."
   exit 0
 fi
+
+# ---------------------------------------------------------------------------
+# 0. Helm repositories
+# ---------------------------------------------------------------------------
+# bitnami is registered for potential future use (e.g. if Keycloak moves back
+# to a Helm-managed deploy). Not currently used — Keycloak is deployed via
+# kubectl apply (infrastructure/keycloak-local.yaml).
+log "Registering Helm repositories..."
+helm repo add bitnami https://charts.bitnami.com/bitnami --force-update 2>/dev/null || true
+helm repo update bitnami 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # 1. Build images (unless skipped)

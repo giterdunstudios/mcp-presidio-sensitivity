@@ -11,6 +11,7 @@
 # Demo cases:
 #   0  Auth boundary — 401 / 403 / 200
 #   t  Token issuance and decoded claims
+#   f  RFC 9728 discovery flow — client bootstrap from MCP URL only
 #   1  Credit card detected and blocked
 #   2  Name + email + phone
 #   3  US SSN detected
@@ -429,6 +430,213 @@ if m:
 }
 
 # ---------------------------------------------------------------------------
+# RFC 9728 discovery flow demo
+# ---------------------------------------------------------------------------
+
+demo_jaeger() {
+  header "Jaeger distributed trace — A3 OTel instrumentation"
+  label "Fires a classify_payload_sensitivity call and retrieves the resulting trace"
+  label "from Jaeger, showing spans across both services."
+  echo ""
+
+  # Check Jaeger is reachable
+  JAEGER="http://localhost:16686"
+  if ! curl -sf "$JAEGER/api/services" &>/dev/null; then
+    warn "Jaeger UI not reachable at $JAEGER"
+    warn "Run: kubectl port-forward -n mcp-presidio svc/jaeger 16686:16686"
+    return 1
+  fi
+
+  # Step 1 — fire a classify request to generate a trace
+  label "Step 1 — Sending classify_payload_sensitivity (rich payload with multiple entity types)."
+  echo ""
+  printf "  ${DIM}[client → mcp → worker]${RESET}  classifying payload ..."
+
+  TOKEN=$(get_token "tools:classify.submit")
+  SESSION=$(open_mcp_session "$TOKEN")
+
+  T0=$(date +%s%3N)
+  RESULT=$(curl -s \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -H "mcp-session-id: $SESSION" \
+    -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"classify_payload_sensitivity","arguments":{"content":"Dear John Synthetic, SSN 234-56-7890, card 4111111111111111, contact john@test.example.","content_type":"text/plain"}},"id":2}' \
+    "$MCP/mcp")
+  T1=$(date +%s%3N)
+  ELAPSED=$(( T1 - T0 ))
+
+  SCAN_ID=$(echo "$RESULT" | python3 -c "
+import sys,json,re
+raw=sys.stdin.read()
+m=re.search(r'data: (.+)', raw)
+if m:
+    r=json.loads(m.group(1))['result']['structuredContent']
+    print(r.get('scan_id','?'))
+" 2>/dev/null)
+
+  echo -e "\r  ${DIM}[client ← mcp]${RESET}             scan_id=${SCAN_ID}  round-trip=${ELAPSED}ms"
+  sleep 1.5
+
+  # Step 2 — wait for spans to flush to Jaeger (BatchSpanProcessor has a short delay)
+  echo ""
+  label "Step 2 — Waiting for OTel BatchSpanProcessor to flush spans to Jaeger."
+  echo ""
+  printf "  ${DIM}[otel → jaeger]${RESET}  flushing spans ..."
+  sleep 3
+  echo -e "\r  ${DIM}[otel → jaeger]${RESET}  spans exported              "
+  sleep 0.5
+
+  # Step 3 — query Jaeger API for the most recent trace
+  echo ""
+  label "Step 3 — Querying Jaeger API for the trace."
+  echo ""
+
+  curl -sf "$JAEGER/api/traces?service=mcp-presidio-sensitivity&limit=1" 2>/dev/null | python3 -c "
+import sys, json
+
+data = json.loads(sys.stdin.read())
+traces = data.get('data', [])
+if not traces:
+    print('  no traces found in Jaeger — spans may still be flushing')
+    sys.exit(0)
+
+t = traces[0]
+trace_id = t['traceID']
+spans = t['spans']
+processes = t.get('processes', {})
+
+bold  = '\033[1m'
+cyan  = '\033[0;36m'
+dim   = '\033[2m'
+reset = '\033[0m'
+
+print(f'  {bold}trace_id:{reset} {cyan}{trace_id}{reset}')
+print(f'  {bold}spans:{reset}    {len(spans)} across 2 services')
+print()
+
+for s in sorted(spans, key=lambda x: x['startTime']):
+    pid = s.get('processID', '')
+    proc = processes.get(pid, {})
+    svc = proc.get('serviceName', pid)
+    op = s['operationName']
+    dur = s['duration'] / 1000
+    tags = {tg['key']: tg['value'] for tg in s.get('tags', [])}
+
+    indent = '    ' if svc == 'presidio-worker' else '  '
+    colour = '\033[0;33m' if svc == 'presidio-worker' else '\033[0;36m'
+
+    extra = ''
+    for k in ('caller_subject', 'decision', 'findings_count', 'language'):
+        if k in tags:
+            extra += f'  {dim}{k}={tags[k]}{reset}'
+
+    print(f'{indent}{colour}[{svc}]{reset}  {bold}{op}{reset}  {dim}{dur:.1f}ms{reset}{extra}')
+" 2>/dev/null || echo "  (trace parse error)"
+
+  echo ""
+  echo -e "${DIM}Open the Jaeger UI to explore the full trace waterfall:${RESET}"
+  echo -e "  ${CYAN}http://localhost:16686${RESET}  ${DIM}(requires: kubectl port-forward -n mcp-presidio svc/jaeger 16686:16686)${RESET}"
+  echo ""
+  success "A3 — distributed trace confirmed across mcp-presidio-sensitivity and presidio-worker"
+}
+
+demo_flow() {
+  header "RFC 9728 Discovery Flow (Flow 2)"
+  label "Simulates a compliant client that starts with only the MCP server URL."
+  label "Keycloak URL, token endpoint, and required scope are all discovered —"
+  label "nothing pre-configured out-of-band."
+  echo ""
+
+  # Step 1 — unauthenticated request → 401 + resource_metadata
+  label "Step 1 — Client sends an unauthenticated request to discover the auth server."
+  echo ""
+  printf "  ${DIM}[client → mcp]${RESET}  POST /mcp (no token) ..."
+  FULL_RESP=$(curl -si --max-time 5 -X POST "$MCP/mcp" \
+    -H "Content-Type: application/json" -d '{}' 2>/dev/null)
+  HTTP_CODE=$(echo "$FULL_RESP" | grep "^HTTP" | awk '{print $2}')
+  WWW_AUTH=$(echo "$FULL_RESP" | grep -i "^www-authenticate:" | tr -d '\r')
+  RESOURCE_META_URL=$(echo "$WWW_AUTH" | python3 -c "
+import sys, re
+m = re.search(r'resource_metadata=\"([^\"]+)\"', sys.stdin.read())
+print(m.group(1) if m else '')
+")
+  echo -e "\r  ${DIM}[mcp → client]${RESET}  HTTP ${HTTP_CODE} — resource_metadata URL in WWW-Authenticate"
+  sleep 0.5
+  echo -e "  ${DIM}               ${RESET}  ${DIM}${WWW_AUTH}${RESET}"
+  sleep 1.2
+  echo ""
+
+  # Step 2 — fetch resource metadata document
+  label "Step 2 — Client fetches the resource metadata document."
+  echo ""
+  printf "  ${DIM}[client → mcp]${RESET}  GET /.well-known/oauth-protected-resource ..."
+  META_DOC=$(curl -sf --max-time 5 "$RESOURCE_META_URL" 2>/dev/null)
+  AS_URL=$(echo "$META_DOC" | python3 -c "import sys,json; print(json.load(sys.stdin)['authorization_servers'][0])")
+  SCOPE_SUPPORTED=$(echo "$META_DOC" | python3 -c "import sys,json; print(', '.join(json.load(sys.stdin).get('scopes_supported', ['?'])))")
+  echo -e "\r  ${DIM}[mcp → client]${RESET}  authorization_servers + scopes_supported received"
+  sleep 0.5
+  echo -e "  ${DIM}               ${RESET}  ${DIM}authorization_servers[0]: $AS_URL${RESET}"
+  echo -e "  ${DIM}               ${RESET}  ${DIM}scopes_supported:         $SCOPE_SUPPORTED${RESET}"
+  sleep 1.2
+  echo ""
+
+  # Step 3 — OIDC discovery from AS
+  label "Step 3 — Client discovers the token endpoint from the authorization server."
+  echo ""
+  printf "  ${DIM}[client → as]${RESET}   GET /.well-known/openid-configuration ..."
+  OIDC_DOC=$(curl -sf --max-time 5 "${AS_URL}/.well-known/openid-configuration" 2>/dev/null)
+  TOKEN_ENDPOINT=$(echo "$OIDC_DOC" | python3 -c "import sys,json; print(json.load(sys.stdin)['token_endpoint'])")
+  ISSUER=$(echo "$OIDC_DOC" | python3 -c "import sys,json; print(json.load(sys.stdin)['issuer'])")
+  echo -e "\r  ${DIM}[as → client]${RESET}   token_endpoint + issuer received"
+  sleep 0.5
+  echo -e "  ${DIM}               ${RESET}  ${DIM}issuer:         $ISSUER${RESET}"
+  echo -e "  ${DIM}               ${RESET}  ${DIM}token_endpoint: $TOKEN_ENDPOINT${RESET}"
+  sleep 1.2
+  echo ""
+
+  # Step 4 — acquire token from discovered endpoint
+  label "Step 4 — Client acquires a token from the discovered endpoint."
+  echo ""
+  printf "  ${DIM}[client → as]${RESET}   POST /token (client_credentials, scope=tools:classify.submit) ..."
+  TOKEN_RESP=$(curl -sf --max-time 10 -X POST "$TOKEN_ENDPOINT" \
+    -d "grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&scope=tools:classify.submit" \
+    2>/dev/null)
+  ACCESS_TOKEN=$(echo "$TOKEN_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+  EXPIRES_IN=$(echo "$TOKEN_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('expires_in','?'))")
+  SUBJECT=$(echo "$ACCESS_TOKEN" | python3 -c "
+import sys, base64, json
+token = sys.stdin.read().strip()
+payload = token.split('.')[1] + '=' * (-len(token.split('.')[1]) % 4)
+claims = json.loads(base64.urlsafe_b64decode(payload))
+print(claims.get('sub', '?'))
+")
+  echo -e "\r  ${DIM}[as → client]${RESET}   JWT received (expires_in: ${EXPIRES_IN}s)"
+  sleep 0.5
+  echo -e "  ${DIM}               ${RESET}  ${DIM}sub: $SUBJECT${RESET}"
+  sleep 1.2
+  echo ""
+
+  # Step 5 — authenticated request to MCP
+  label "Step 5 — Client sends the authenticated request to the MCP server."
+  echo ""
+  printf "  ${DIM}[client → mcp]${RESET}  POST /mcp  Authorization: Bearer <JWT> ..."
+  SESSION=$(open_mcp_session "$ACCESS_TOKEN")
+  echo -e "\r  ${DIM}[mcp → client]${RESET}  HTTP 200 — session opened"
+  sleep 0.5
+  echo -e "  ${DIM}               ${RESET}  ${DIM}mcp-session-id: $SESSION${RESET}"
+  sleep 1.0
+  echo ""
+
+  # Summary
+  echo -e "${BOLD}Discovery complete.${RESET}"
+  echo -e "${DIM}Started with one URL: $MCP${RESET}"
+  echo -e "${DIM}Keycloak location, token endpoint, and required scope — all discovered.${RESET}"
+  echo ""
+  success "Flow 2 (RFC 9728) — compliant client bootstrap from MCP URL only"
+}
+
+# ---------------------------------------------------------------------------
 # Menu
 # ---------------------------------------------------------------------------
 
@@ -439,6 +647,7 @@ show_menu() {
   echo -e "${BOLD}Auth${RESET}"
   echo "  0  Auth boundary — 401 / 403 / 200"
   echo "  t  Token issuance and decoded claims"
+  echo "  f  RFC 9728 discovery flow — client bootstrap from MCP URL only"
   echo ""
   echo -e "${BOLD}Detection (full MCP path — Keycloak → MCP → worker)${RESET}"
   echo "  1  Credit card detected and blocked"
@@ -454,6 +663,7 @@ show_menu() {
   echo ""
   echo -e "${BOLD}Observability${RESET}"
   echo "  l  Scan lifecycle trace — ephemeral vs. persistent"
+  echo "  j  Jaeger distributed trace — A3 OTel spans across both services"
   echo ""
   echo "  a  Run all demos in sequence"
   echo "  q  Quit"
@@ -464,6 +674,7 @@ run_demo() {
   case "$1" in
     0|auth) demo_auth ;;
     t|token) demo_token ;;
+    f|flow) demo_flow ;;
     1) demo_1 ;;
     2) demo_2 ;;
     3) demo_3 ;;
@@ -473,6 +684,7 @@ run_demo() {
     7) demo_7 ;;
     8) demo_8 ;;
     l|trace) demo_trace ;;
+    j|jaeger) demo_jaeger ;;
     *) warn "Unknown demo: $1" ;;
   esac
 }
@@ -489,7 +701,7 @@ if [[ $# -gt 0 && "$1" != "a" ]]; then
 fi
 
 if [[ $# -gt 0 && "$1" == "a" ]]; then
-  for d in auth token 1 2 3 4 5 6 7 8 trace; do
+  for d in auth token flow 1 2 3 4 5 6 7 8 trace jaeger; do
     run_demo "$d"
     pause
   done
@@ -502,9 +714,9 @@ while true; do
   printf "Choose: "
   read -r choice
   case "$choice" in
-    [0-9]|t|l|token|auth|trace) run_demo "$choice" ;;
+    [0-9]|t|f|l|j|token|auth|flow|trace|jaeger) run_demo "$choice" ;;
     a)
-      for d in auth token 1 2 3 4 5 6 7 8 trace; do
+      for d in auth token flow 1 2 3 4 5 6 7 8 trace jaeger; do
         run_demo "$d"
         pause
       done

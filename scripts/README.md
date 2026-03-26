@@ -80,6 +80,8 @@ Admin operations against the mcp-local Keycloak realm.
 ./scripts/keycloak-admin.sh status
 ./scripts/keycloak-admin.sh set-ttl 60
 ./scripts/keycloak-admin.sh discovery-check
+./scripts/keycloak-admin.sh token           # decode claims + DEC-002 check
+./scripts/keycloak-admin.sh token --raw     # also print the raw Bearer token
 ```
 
 ---
@@ -97,9 +99,68 @@ stakeholders, or validate a specific scenario.
 ./scripts/demo.sh a      # all cases in sequence — use for Phase 1 sign-off
 ```
 
-Demo cases: `0` auth boundary · `1` credit card · `2` name/email/phone ·
-`3` SSN · `4` clean text · `5` date-only · `6` rich payload · `7` oversized
-payload · `8` bad content type · `l` lifecycle trace · `a` all
+Demo cases: `0` auth boundary · `t` token claims · `f` RFC 9728 discovery flow ·
+`1` credit card · `2` name/email/phone · `3` SSN · `4` clean text · `5` date-only ·
+`6` rich payload · `7` oversized payload · `8` bad content type · `l` lifecycle trace · `a` all
+
+---
+
+## classify.sh
+Send a payload through the full MCP path and get the classification result.
+Performs the RFC 9728 discovery chain from the MCP URL — no Keycloak URL
+needed. The same path a compliant agent client would take.
+
+**When:** Any time you want to test or verify classification of a specific
+payload without writing curl commands by hand.
+
+```bash
+./scripts/classify.sh "Call Jane Smith on 555-867-5309"
+./scripts/classify.sh path/to/file.txt
+./scripts/classify.sh /absolute/path/to/file.txt
+echo "some text" | ./scripts/classify.sh
+```
+
+Output includes a human-readable summary (decision, severity, categories,
+entities, scan ID) followed by the full structured JSON response.
+
+---
+
+## test.sh
+Run the mcp_server unit test suite inside a Docker container.
+
+**When:** After any source change to `src/mcp_server/`, before committing, or any
+time you want to verify the test suite is green. Uses `python:3.11.15-slim` with
+pinned package versions — no venv or host pip install required.
+
+The host Python is PEP 668 managed (Ubuntu), so host-level `pip install` is
+blocked. Docker is the test runner.
+
+```bash
+./scripts/test.sh              # run all tests (default: -v)
+./scripts/test.sh -k auth      # pass any pytest args through
+./scripts/test.sh -v -x        # verbose, stop on first failure
+```
+
+---
+
+## auth-test.sh
+Auth enforcement test matrix. Runs five cases against the live MCP server and
+passes/fails each one.
+
+**When:** After any change to `auth/errors.py`, `auth/middleware.py`, or
+`config.py`. Required gate before Phase 1 sign-off alongside
+`validate-networkpolicy.sh`.
+
+Cases:
+- `1` No token → 401 + RFC 9728 `WWW-Authenticate`
+- `2` Malformed token → 401
+- `3` Valid token, wrong scope → 403
+- `4` Valid token, correct scope → 200
+- `5` Expired token → 401 (sets realm TTL to 2s, restores to 60s after)
+
+```bash
+./scripts/auth-test.sh
+```
 
 ---
 
@@ -127,12 +188,14 @@ allowed, MCP→internet denied, NetworkPolicy resource presence checks.
 
 # 2. After source changes
 ./scripts/rebuild.sh mcp       # or worker, or both
+./scripts/test.sh              # run unit tests
 ./scripts/status.sh
 
 # 3. After any auth-related change
 ./scripts/keycloak-admin.sh discovery-check
 
 # 4. Full validation before Phase 1 sign-off
+./scripts/auth-test.sh
 ./scripts/validate-networkpolicy.sh
 ./scripts/demo.sh a
 ```
