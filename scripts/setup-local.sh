@@ -52,24 +52,39 @@ check_prereq helm    "Install helm: https://helm.sh/docs/intro/install/  (brew i
 check_prereq curl    "Install curl: apt-get install curl"
 
 # ---------------------------------------------------------------------------
-# Re-exec with docker group applied if not already in it.
-# Required on WSL2 where 'newgrp docker' only applies to interactive shells.
+# Container detection — skip sg docker re-exec when running inside devtools.
+# Inside the devtools container the Docker socket is mounted directly and sg
+# is not available. On the host (WSL2) sg is needed to apply the docker group
+# to non-interactive subshells.
 # ---------------------------------------------------------------------------
-if ! groups | grep -qw docker; then
+IN_CONTAINER=false
+[ -f /.dockerenv ] && IN_CONTAINER=true
+
+# Re-exec with docker group applied if not already in it (host only).
+if ! $IN_CONTAINER && ! groups | grep -qw docker; then
   exec sg docker -c "bash $0 $*"
 fi
+
+# docker_exec: run a docker subcommand, using sg when on host outside docker group.
+docker_exec() {
+  if $IN_CONTAINER; then
+    docker "$@"
+  else
+    sg docker -c "docker $*"
+  fi
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CLUSTER_NAME="mcp-presidio"
 NAMESPACE="mcp-presidio"
-REGISTRY="k3d-mcp-registry:5000"
-REGISTRY_NAME="mcp-registry"   # k3d prepends 'k3d-' → k3d-mcp-registry
+REGISTRY_NAME="mcp-registry"          # k3d prepends 'k3d-' → k3d-mcp-registry
+REGISTRY_PUSH="localhost:5000"         # host-reachable push address
 WORKER_IMAGE="presidio-worker:0.1.0"
 MCP_SERVER_IMAGE="mcp-presidio-sensitivity:0.1.0"
-WORKER_IMAGE_REMOTE="$REGISTRY/presidio-worker:0.1.0"
-MCP_SERVER_IMAGE_REMOTE="$REGISTRY/mcp-presidio-sensitivity:0.1.0"
+WORKER_IMAGE_REMOTE="$REGISTRY_PUSH/presidio-worker:0.1.0"
+MCP_SERVER_IMAGE_REMOTE="$REGISTRY_PUSH/mcp-presidio-sensitivity:0.1.0"
 
 SKIP_BUILD=false
 TEARDOWN=false
@@ -126,11 +141,11 @@ if $SKIP_BUILD; then
   log "Skipping image builds (--skip-build passed)"
 else
   log "Building $WORKER_IMAGE..."
-  sg docker -c "docker build -t '$WORKER_IMAGE' '$PROJECT_ROOT/src/worker/'"
+  docker_exec build -t "$WORKER_IMAGE" "$PROJECT_ROOT/src/worker/"
 
   if [[ -d "$PROJECT_ROOT/src/mcp_server" ]]; then
     log "Building $MCP_SERVER_IMAGE..."
-    sg docker -c "docker build -t '$MCP_SERVER_IMAGE' '$PROJECT_ROOT/src/mcp_server/'"
+    docker_exec build -t "$MCP_SERVER_IMAGE" "$PROJECT_ROOT/src/mcp_server/"
   else
     log "Skipping $MCP_SERVER_IMAGE build — src/mcp_server/ not yet present"
   fi
@@ -202,8 +217,8 @@ kubectl rollout status deployment/grafana -n "$NAMESPACE" --timeout=60s
 # ---------------------------------------------------------------------------
 
 log "Pushing $WORKER_IMAGE to registry..."
-sg docker -c "docker tag '$WORKER_IMAGE' '$WORKER_IMAGE_REMOTE'"
-sg docker -c "docker push '$WORKER_IMAGE_REMOTE'"
+docker_exec tag "$WORKER_IMAGE" "$WORKER_IMAGE_REMOTE"
+docker_exec push "$WORKER_IMAGE_REMOTE"
 
 log "Deploying presidio-worker..."
 helm upgrade --install presidio-worker "$PROJECT_ROOT/helm/presidio-worker" \
@@ -218,10 +233,10 @@ kubectl rollout status deployment/presidio-worker -n "$NAMESPACE" --timeout=120s
 # 8. Push and deploy mcp-presidio-sensitivity (if built)
 # ---------------------------------------------------------------------------
 
-if sg docker -c "docker image inspect '$MCP_SERVER_IMAGE'" &>/dev/null; then
+if docker_exec image inspect "$MCP_SERVER_IMAGE" &>/dev/null; then
   log "Pushing $MCP_SERVER_IMAGE to registry..."
-  sg docker -c "docker tag '$MCP_SERVER_IMAGE' '$MCP_SERVER_IMAGE_REMOTE'"
-  sg docker -c "docker push '$MCP_SERVER_IMAGE_REMOTE'"
+  docker_exec tag "$MCP_SERVER_IMAGE" "$MCP_SERVER_IMAGE_REMOTE"
+  docker_exec push "$MCP_SERVER_IMAGE_REMOTE"
 
   log "Deploying mcp-presidio-sensitivity..."
   helm upgrade --install mcp-presidio-sensitivity "$PROJECT_ROOT/helm/mcp-server" \

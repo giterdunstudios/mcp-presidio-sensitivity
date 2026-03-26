@@ -31,7 +31,10 @@ for cmd in docker k3d kubectl helm; do
   command -v "$cmd" &>/dev/null || { echo "[rebuild] ERROR: '$cmd' not found — run setup-local.sh first" >&2; exit 1; }
 done
 
-if ! groups | grep -qw docker; then
+IN_CONTAINER=false
+[ -f /.dockerenv ] && IN_CONTAINER=true
+
+if ! $IN_CONTAINER && ! groups | grep -qw docker; then
   exec sg docker -c "bash $0 $*"
 fi
 
@@ -40,11 +43,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CLUSTER_NAME="mcp-presidio"
 NAMESPACE="mcp-presidio"
-REGISTRY="k3d-mcp-registry:5000"
+REGISTRY_PUSH="localhost:5000"         # host-reachable push address; cluster pulls via k3d-mcp-registry:5000
 MCP_IMAGE="mcp-presidio-sensitivity:0.1.0"
 WORKER_IMAGE="presidio-worker:0.1.0"
-MCP_IMAGE_REMOTE="$REGISTRY/mcp-presidio-sensitivity:0.1.0"
-WORKER_IMAGE_REMOTE="$REGISTRY/presidio-worker:0.1.0"
+MCP_IMAGE_REMOTE="$REGISTRY_PUSH/mcp-presidio-sensitivity:0.1.0"
+WORKER_IMAGE_REMOTE="$REGISTRY_PUSH/presidio-worker:0.1.0"
 
 log()  { echo "[rebuild] $*"; }
 fail() { echo "[rebuild] ERROR: $*" >&2; exit 1; }

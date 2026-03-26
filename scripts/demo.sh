@@ -33,6 +33,7 @@ set -euo pipefail
 WORKER="http://localhost:8090"
 MCP="http://localhost:8000"
 KEYCLOAK="http://localhost:8080/realms/mcp-local"
+NAMESPACE="mcp-presidio"
 CLIENT_ID="test-agent-client"
 CLIENT_SECRET="test-agent-secret-change-in-prod"
 
@@ -60,12 +61,14 @@ pause() { echo -e "\n${DIM}Press Enter to continue...${RESET}"; read -r; }
 
 check_stack() {
   local ok=true
-  curl -sf "$WORKER/health" &>/dev/null  || { fail "Worker not reachable at $WORKER — run ./scripts/setup-local.sh"; ok=false; }
+  # Worker: NetworkPolicy blocks external NodePort access (DEC-001).
+  # Verify health indirectly via MCP server — if MCP is healthy and can call
+  # the worker, the worker is up. A full worker health check is in status.sh.
   curl -sf "$MCP/health" &>/dev/null     || { fail "MCP server not reachable at $MCP — run ./scripts/setup-local.sh"; ok=false; }
   curl -sf "$KEYCLOAK/.well-known/openid-configuration" &>/dev/null \
     || { fail "Keycloak not reachable at $KEYCLOAK — run ./scripts/setup-local.sh"; ok=false; }
   [[ "$ok" == "true" ]] || exit 1
-  echo -e "${GREEN}Stack is up — worker, MCP server, Keycloak all healthy${RESET}"
+  echo -e "${GREEN}Stack is up — MCP server and Keycloak healthy${RESET}"
 }
 
 # Acquire a token for subsequent demos
@@ -255,13 +258,16 @@ demo_6() {
 
 demo_7() {
   header "Demo 7 — Oversized payload rejected"
-  label "Payload just over the 1MB limit sent directly to the worker."
+  label "Payload just over the 1MB limit sent to the worker via MCP server pod."
   label "Expected: HTTP 413 PAYLOAD_TOO_LARGE, no scan performed."
+  label "(Worker is internal-only per DEC-001; requests run via kubectl exec on MCP pod.)"
   echo ""
-  python3 -c "
+  MCP_POD=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=mcp-presidio-sensitivity \
+    --no-headers -o custom-columns=NAME:.metadata.name 2>/dev/null | head -1)
+  kubectl exec -n "$NAMESPACE" "$MCP_POD" -- python3 -c "
 import json, urllib.request, urllib.error
 payload = json.dumps({'content': 'x' * 1_048_577, 'content_type': 'text/plain', 'language': 'en', 'request_metadata': {'workflow_id': 'test', 'source_system': 'demo'}}).encode()
-req = urllib.request.Request('$WORKER/scan', data=payload, headers={'Content-Type': 'application/json'}, method='POST')
+req = urllib.request.Request('http://presidio-worker.mcp-presidio.svc.cluster.local:8080/scan', data=payload, headers={'Content-Type': 'application/json'}, method='POST')
 try:
     urllib.request.urlopen(req)
 except urllib.error.HTTPError as e:
@@ -277,10 +283,13 @@ demo_8() {
   header "Demo 8 — Unsupported content type rejected"
   label "Sending XML instead of text/plain or application/json to the worker."
   label "Expected: HTTP 415 UNSUPPORTED_CONTENT_TYPE, no scan performed."
+  label "(Worker is internal-only per DEC-001; requests run via kubectl exec on MCP pod.)"
   echo ""
-  python3 -c "
+  MCP_POD=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=mcp-presidio-sensitivity \
+    --no-headers -o custom-columns=NAME:.metadata.name 2>/dev/null | head -1)
+  kubectl exec -n "$NAMESPACE" "$MCP_POD" -- python3 -c "
 import urllib.request, urllib.error, json
-req = urllib.request.Request('$WORKER/scan', data=b'<data>test</data>', headers={'Content-Type': 'application/xml'}, method='POST')
+req = urllib.request.Request('http://presidio-worker.mcp-presidio.svc.cluster.local:8080/scan', data=b'<data>test</data>', headers={'Content-Type': 'application/xml'}, method='POST')
 try:
     urllib.request.urlopen(req)
 except urllib.error.HTTPError as e:

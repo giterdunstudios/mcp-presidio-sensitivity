@@ -22,7 +22,10 @@
 
 set -uo pipefail
 
-if ! groups | grep -qw docker; then
+IN_CONTAINER=false
+[ -f /.dockerenv ] && IN_CONTAINER=true
+
+if ! $IN_CONTAINER && ! groups | grep -qw docker; then
   exec sg docker -c "bash $0 $*"
 fi
 
@@ -72,11 +75,20 @@ else
   fail "Keycloak OIDC discovery  http://localhost:8080 — not ready or realm not imported"
 fi
 
-# Presidio worker
-if curl -sf --max-time 5 http://localhost:8090/health | grep -q '"ok"' 2>/dev/null; then
-  pass "Presidio worker          http://localhost:8090/health"
+# Presidio worker — checked via kubectl exec (NetworkPolicy correctly blocks
+# external NodePort access per DEC-001; worker is internal-only).
+WORKER_POD=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=presidio-worker \
+  --no-headers -o custom-columns=NAME:.metadata.name 2>/dev/null | head -1)
+if [[ -n "$WORKER_POD" ]]; then
+  WORKER_HEALTH=$(kubectl exec -n "$NAMESPACE" "$WORKER_POD" -- \
+    python3 -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8080/health', timeout=3).read().decode())" 2>/dev/null || true)
+  if echo "$WORKER_HEALTH" | grep -q '"ok"'; then
+    pass "Presidio worker          (internal, via kubectl exec)"
+  else
+    fail "Presidio worker          pod $WORKER_POD /health did not return ok"
+  fi
 else
-  fail "Presidio worker          http://localhost:8090/health"
+  fail "Presidio worker          no running pod found"
 fi
 
 # MCP server
@@ -142,11 +154,17 @@ else
   fail "MCP server /metrics       not serving (check prometheus-client dep)"
 fi
 
-# Worker /metrics
-if curl -sf --max-time 5 http://localhost:8090/metrics 2>/dev/null | grep -q "worker_build_info"; then
-  pass "Worker /metrics           http://localhost:8090/metrics"
+# Worker /metrics — checked via kubectl exec (same reason as health above)
+if [[ -n "$WORKER_POD" ]]; then
+  WORKER_METRICS=$(kubectl exec -n "$NAMESPACE" "$WORKER_POD" -- \
+    python3 -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8080/metrics', timeout=3).read().decode())" 2>/dev/null || true)
+  if echo "$WORKER_METRICS" | grep -q "worker_build_info"; then
+    pass "Worker /metrics           (internal, via kubectl exec)"
+  else
+    fail "Worker /metrics           not serving (check prometheus-client dep)"
+  fi
 else
-  fail "Worker /metrics           not serving (check prometheus-client dep)"
+  fail "Worker /metrics           no running pod found"
 fi
 
 # ---------------------------------------------------------------------------

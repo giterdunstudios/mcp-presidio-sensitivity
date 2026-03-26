@@ -14,6 +14,12 @@ spec:
     - Ingress
     - Egress
   ingress:
+    # External clients — agent/developer traffic arriving via NodePort.
+    # No 'from' selector: allows traffic from any source (host, serverlb DNAT,
+    # future ingress controller). MCP server is the public-facing service.
+    - ports:
+        - protocol: TCP
+          port: 8000
     # Prometheus — metrics scraping on service port
     - from:
         - podSelector:

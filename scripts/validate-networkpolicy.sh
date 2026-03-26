@@ -9,20 +9,19 @@
 #   - Before Phase 1 exit sign-off (required gate — see decision-log.md DEC-001)
 #   Note: deploys and cleans up a temporary busybox test pod automatically.
 #
-# CNI limitation (local dev only):
-#   kind uses kindnet by default, which does NOT enforce NetworkPolicy.
-#   Cases 13 and 14 (non-MCP pod denied to worker) are skipped because
-#   kindnet will never block traffic regardless of policy rules.
+# CNI note:
+#   k3d (k3s) uses Flannel by default. Flannel enforces NetworkPolicy ingress
+#   rules at the kernel level — confirmed under k3s v1.30.4+k3s1.
+#   All 10 cases are active. Phase 2 will swap Flannel for Cilium (eBPF
+#   enforcement) per DEC-004 Phase E; re-run this script after that swap.
 #   Cases 11, 12, 16, and 18 use Python (urllib) for connectivity checks
 #   because the MCP server container is minimal Python with no wget/curl.
-#   Enforcement validation (cases 13/14) must be done in a staging
-#   environment with a NetworkPolicy-aware CNI (Calico, Cilium, etc.).
 #
 # Use cases covered (cases 11–20):
 #   11. MCP server pod → worker /scan              ALLOWED
 #   12. MCP server pod → worker /health            ALLOWED
-#   13. Non-MCP pod → worker /scan                 DENIED  (skipped — kindnet)
-#   14. Non-MCP pod → worker /health               DENIED  (skipped — kindnet)
+#   13. Non-MCP pod → worker /scan                 DENIED
+#   14. Non-MCP pod → worker /health               DENIED
 #   15. Kubelet → worker /health (liveness probe)  ALLOWED (node-level, bypasses NetworkPolicy)
 #   16. MCP server → Keycloak OIDC discovery       ALLOWED
 #   17. MCP server → worker (end-to-end scan)      ALLOWED
@@ -159,20 +158,31 @@ fi
 
 # ---------------------------------------------------------------------------
 # Case 13: Non-MCP pod → worker /scan — DENIED
-# Skipped: kindnet does not enforce NetworkPolicy. Validate in staging with
-# a NetworkPolicy-aware CNI (Calico, Cilium, etc.).
+# k3s/Flannel enforces NetworkPolicy ingress — connection must be refused.
 # ---------------------------------------------------------------------------
 
 header "Case 13 — Non-MCP pod → worker /scan (DENIED)"
-skip "Case 13: skipped — kindnet CNI does not enforce NetworkPolicy (staging required)"
+if kubectl exec -n "$NAMESPACE" "$TEST_POD" -- \
+    wget -q --timeout="$CONNECT_TIMEOUT" -O - \
+    "http://$WORKER_SVC:8080/scan" 2>/dev/null; then
+    fail "Case 13: non-MCP pod reached worker /scan — NetworkPolicy not enforced"
+else
+    pass "Non-MCP pod correctly denied access to worker /scan"
+fi
 
 # ---------------------------------------------------------------------------
 # Case 14: Non-MCP pod → worker /health — DENIED
-# Skipped: same CNI limitation as case 13.
+# Same NetworkPolicy enforcement path as case 13.
 # ---------------------------------------------------------------------------
 
 header "Case 14 — Non-MCP pod → worker /health (DENIED)"
-skip "Case 14: skipped — kindnet CNI does not enforce NetworkPolicy (staging required)"
+if kubectl exec -n "$NAMESPACE" "$TEST_POD" -- \
+    wget -q --timeout="$CONNECT_TIMEOUT" -O - \
+    "http://$WORKER_SVC:8080/health" 2>/dev/null; then
+    fail "Case 14: non-MCP pod reached worker /health — NetworkPolicy not enforced"
+else
+    pass "Non-MCP pod correctly denied access to worker /health"
+fi
 
 # ---------------------------------------------------------------------------
 # Case 15: Kubelet liveness probe → worker /health — ALLOWED
