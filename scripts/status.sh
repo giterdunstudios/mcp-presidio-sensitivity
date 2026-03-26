@@ -168,14 +168,15 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Port mappings (informational)
+# Service URLs
 # ---------------------------------------------------------------------------
-header "Port mappings"
-warn "Keycloak:         http://localhost:8080"
-warn "Presidio worker:  http://localhost:8090"
+header "Service URLs"
 warn "MCP server:       http://localhost:8000"
-warn "Jaeger UI:        http://localhost:16686"
-warn "Prometheus:       http://localhost:9090"
-warn "Grafana:          http://localhost:3000"
+warn "Keycloak:         http://localhost:8080"
+printf '\n'
+header "Observability UIs"
+warn "Grafana:          http://localhost:3000/d/mcp-presidio-ops   (MCP Operations dashboard)"
+warn "Jaeger:           http://localhost:16686                      (distributed traces)"
+warn "Prometheus:       http://localhost:9090                       (raw metrics)"
 
 printf '\n'
