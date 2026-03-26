@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuild one or both service images, load into the kind cluster, and
+# Rebuild one or both service images, push to the local k3d registry, and
 # perform a rolling restart so pods pick up the new image immediately.
 #
 # When to use:
@@ -10,9 +10,9 @@
 #   - When a pod is running stale code (imageID in kubectl describe doesn't
 #     match the locally built sha256)
 #   - After merging a branch that changes application code or chart config
-#   Always use this instead of manual docker build + kind load + rollout
-#   commands — it ensures --no-cache, correct image tags, helm config sync,
-#   and waits for rollout completion before returning.
+#   Always use this instead of manual docker build + docker push to registry +
+#   rollout commands — it ensures --no-cache, correct image tags, helm config
+#   sync, and waits for rollout completion before returning.
 #
 # Usage:
 #   ./scripts/rebuild.sh              # rebuild both images (most common)
@@ -21,10 +21,15 @@
 #   ./scripts/rebuild.sh mcp worker   # explicit both
 #
 # Prerequisites:
-#   - Kind cluster running (./scripts/setup-local.sh completed)
+#   - k3d cluster and registry running (./scripts/setup-local.sh completed)
 #   - Docker available
 
 set -euo pipefail
+
+# Prerequisites check
+for cmd in docker k3d kubectl helm; do
+  command -v "$cmd" &>/dev/null || { echo "[rebuild] ERROR: '$cmd' not found — run setup-local.sh first" >&2; exit 1; }
+done
 
 if ! groups | grep -qw docker; then
   exec sg docker -c "bash $0 $*"
@@ -35,8 +40,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CLUSTER_NAME="mcp-presidio"
 NAMESPACE="mcp-presidio"
+REGISTRY="k3d-mcp-registry:5000"
 MCP_IMAGE="mcp-presidio-sensitivity:0.1.0"
 WORKER_IMAGE="presidio-worker:0.1.0"
+MCP_IMAGE_REMOTE="$REGISTRY/mcp-presidio-sensitivity:0.1.0"
+WORKER_IMAGE_REMOTE="$REGISTRY/presidio-worker:0.1.0"
 
 log()  { echo "[rebuild] $*"; }
 fail() { echo "[rebuild] ERROR: $*" >&2; exit 1; }
@@ -64,8 +72,8 @@ done
 # Pre-flight: cluster must exist
 # ---------------------------------------------------------------------------
 
-if ! kind get clusters 2>/dev/null | grep -q "^$CLUSTER_NAME$"; then
-  fail "Kind cluster '$CLUSTER_NAME' not found — run ./scripts/setup-local.sh first"
+if ! k3d cluster list 2>/dev/null | grep -q "^$CLUSTER_NAME"; then
+  fail "k3d cluster '$CLUSTER_NAME' not found — run ./scripts/setup-local.sh first"
 fi
 
 # ---------------------------------------------------------------------------
@@ -91,23 +99,27 @@ if $BUILD_WORKER; then
 fi
 
 # ---------------------------------------------------------------------------
-# Load into kind (parallel where both are being loaded)
+# Push to registry (parallel where both are being pushed)
 # ---------------------------------------------------------------------------
 
 if $BUILD_MCP && $BUILD_WORKER; then
-  log "Loading both images into kind cluster (parallel)..."
-  kind load docker-image "$MCP_IMAGE"    --name "$CLUSTER_NAME" &
-  kind load docker-image "$WORKER_IMAGE" --name "$CLUSTER_NAME" &
+  log "Pushing both images to registry (parallel)..."
+  docker tag "$MCP_IMAGE" "$MCP_IMAGE_REMOTE"
+  docker tag "$WORKER_IMAGE" "$WORKER_IMAGE_REMOTE"
+  docker push "$MCP_IMAGE_REMOTE" &
+  docker push "$WORKER_IMAGE_REMOTE" &
   wait
-  log "Both images loaded"
+  log "Both images pushed"
 elif $BUILD_MCP; then
-  log "Loading $MCP_IMAGE into kind cluster..."
-  kind load docker-image "$MCP_IMAGE" --name "$CLUSTER_NAME"
-  log "$MCP_IMAGE loaded"
+  log "Pushing $MCP_IMAGE to registry..."
+  docker tag "$MCP_IMAGE" "$MCP_IMAGE_REMOTE"
+  docker push "$MCP_IMAGE_REMOTE"
+  log "$MCP_IMAGE pushed"
 elif $BUILD_WORKER; then
-  log "Loading $WORKER_IMAGE into kind cluster..."
-  kind load docker-image "$WORKER_IMAGE" --name "$CLUSTER_NAME"
-  log "$WORKER_IMAGE loaded"
+  log "Pushing $WORKER_IMAGE to registry..."
+  docker tag "$WORKER_IMAGE" "$WORKER_IMAGE_REMOTE"
+  docker push "$WORKER_IMAGE_REMOTE"
+  log "$WORKER_IMAGE pushed"
 fi
 
 # ---------------------------------------------------------------------------

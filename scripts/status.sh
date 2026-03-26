@@ -9,7 +9,7 @@
 #   - Before running demo.sh — catches problems before the live demo
 #
 # What it checks:
-#   - Kind cluster exists
+#   - k3d cluster exists
 #   - All pods Running with 0 unexpected restarts
 #   - Keycloak OIDC discovery endpoint reachable and returning valid JSON
 #   - Worker and MCP server /health endpoints returning ok
@@ -38,10 +38,10 @@ header() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 # Cluster
 # ---------------------------------------------------------------------------
 header "Cluster"
-if kind get clusters 2>/dev/null | grep -q "^$CLUSTER_NAME$"; then
-  pass "kind cluster '$CLUSTER_NAME' exists"
+if k3d cluster list 2>/dev/null | grep -q "^$CLUSTER_NAME "; then
+  pass "k3d cluster '$CLUSTER_NAME' exists"
 else
-  fail "kind cluster '$CLUSTER_NAME' not found — run setup-local.sh"
+  fail "k3d cluster '$CLUSTER_NAME' not found — run setup-local.sh"
   exit 1
 fi
 

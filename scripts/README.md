@@ -1,6 +1,6 @@
 # mcp-presidio-sensitivity — Dev Scripts
 
-These scripts are specific to this project. They have the kind cluster name
+These scripts are specific to this project. They have the k3d cluster name
 (`mcp-presidio`), namespace (`mcp-presidio`), image tags
 (`mcp-presidio-sensitivity:0.1.0`, `presidio-worker:0.1.0`), Keycloak realm
 (`mcp-local`), client credentials, and port mappings (`8000`, `8080`, `8090`)
@@ -11,7 +11,7 @@ Each script has a detailed `When to use` block in its header.
 ---
 
 ## setup-local.sh
-Bootstraps the mcp-presidio kind cluster from scratch.
+Bootstraps the mcp-presidio k3d registry and cluster from scratch.
 
 **When:** First-time setup, after a WSL2 restart that wiped the cluster, or after
 `--teardown`. NOT for routine code changes — use `rebuild.sh` instead.
@@ -31,12 +31,12 @@ After running, always follow up:
 ---
 
 ## rebuild.sh
-Rebuilds one or both Docker images, loads them into the mcp-presidio kind cluster,
-and performs a rolling restart.
+Rebuilds one or both Docker images, pushes them to the local k3d registry
+(k3d-mcp-registry:5000), and performs a rolling restart.
 
 **When:** After any source change to `src/mcp_server/` or `src/worker/`, after a
 Dockerfile change, or after merging a branch that touches application code.
-Replaces the manual `docker build --no-cache` + `kind load` + `kubectl rollout
+Replaces the manual `docker build --no-cache` + `docker push` + `kubectl rollout
 restart` + `kubectl rollout status` sequence.
 
 ```bash
@@ -54,7 +54,7 @@ Full health and compliance check for the mcp-presidio-sensitivity stack.
 any time a service is behaving unexpectedly.
 
 Checks:
-- mcp-presidio kind cluster exists
+- mcp-presidio k3d cluster exists
 - All pods in `mcp-presidio` namespace are Running
 - Keycloak, worker, and MCP server health endpoints
 - Token acquisition and TTL (DEC-002: must be ≤ 60s)
@@ -165,7 +165,7 @@ Cases:
 ---
 
 ## validate-networkpolicy.sh
-Validates the mcp-presidio NetworkPolicy rules against the live kind cluster.
+Validates the mcp-presidio NetworkPolicy rules against the live k3d cluster.
 Deploys and cleans up a temporary busybox test pod automatically.
 
 **When:** After any change to Helm NetworkPolicy templates, after a cluster rebuild,

@@ -1,0 +1,305 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:c4a1f1e2-3b5d-4e87-9f0a-1c2d3e4f5a6b",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-03-26T00:00:00Z",
+    "lifecycles": [
+      { "phase": "development" }
+    ],
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "pip-tools",
+          "description": "Compiles requirements.lock.txt from requirements.txt (pip-compile). Authoritative source of pinned dependency versions."
+        },
+        {
+          "type": "application",
+          "name": "pip-audit",
+          "description": "CVE audit runner for Python dependencies. Results documented in src/worker/.pip-audit-ignore."
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "bom-ref": "solution",
+      "name": "mcp-presidio-sensitivity",
+      "version": "0.1.0",
+      "description": "MCP server for data sensitivity classification using Microsoft Presidio. Exposes a single MCP tool (classify_payload_sensitivity) behind OAuth 2.0 client credentials (Keycloak). Returns bounded scan results — never payload content.",
+      "licenses": [
+        { "license": { "name": "Proprietary — internal use only" } }
+      ]
+    }
+  },
+  "components": [
+
+    // -----------------------------------------------------------------------
+    // Application services
+    // -----------------------------------------------------------------------
+
+    {
+      "type": "application",
+      "bom-ref": "mcp-server",
+      "name": "mcp-presidio-sensitivity",
+      "version": "0.1.0",
+      "description": "MCP server — FastAPI + FastMCP, JWT auth middleware, audit trail, OTel tracing, Prometheus metrics.",
+      "properties": [
+        { "name": "internal:image", "value": "k3d-mcp-registry:5000/mcp-presidio-sensitivity:0.1.0" },
+        { "name": "internal:dockerfile", "value": "src/mcp_server/Dockerfile" },
+        { "name": "internal:base-image", "value": "python:3.11.15-slim" },
+        { "name": "internal:runtime-user", "value": "uid=1001 (non-root)" }
+      ]
+    },
+    {
+      "type": "application",
+      "bom-ref": "presidio-worker",
+      "name": "presidio-worker",
+      "version": "0.1.0",
+      "description": "Ephemeral Presidio analysis worker — FastAPI, spaCy en_core_web_lg model baked in, result minimizer (strips payload), OTel tracing, Prometheus metrics.",
+      "properties": [
+        { "name": "internal:image", "value": "k3d-mcp-registry:5000/presidio-worker:0.1.0" },
+        { "name": "internal:dockerfile", "value": "src/worker/Dockerfile" },
+        { "name": "internal:base-image", "value": "python:3.11.15-slim" },
+        { "name": "internal:runtime-user", "value": "uid=1001 (non-root)" },
+        { "name": "internal:nlp-model", "value": "en_core_web_lg (baked into image at build time)" }
+      ]
+    },
+
+    // -----------------------------------------------------------------------
+    // Infrastructure services
+    // -----------------------------------------------------------------------
+
+    {
+      "type": "container",
+      "bom-ref": "infra-keycloak",
+      "name": "keycloak",
+      "version": "26.1.4",
+      "description": "Authorization Server. Issues OAuth 2.0 client credentials tokens (JWT). Serves JWKS and OIDC discovery endpoints. Realm: mcp-local.",
+      "purl": "pkg:docker/keycloak/keycloak@26.1.4?repository_url=quay.io",
+      "properties": [
+        { "name": "internal:manifest", "value": "infrastructure/keycloak-local.yaml" },
+        { "name": "internal:realm", "value": "mcp-local" },
+        { "name": "internal:token-ttl", "value": "60s (DEC-002)" }
+      ]
+    },
+    {
+      "type": "container",
+      "bom-ref": "infra-jaeger",
+      "name": "jaeger",
+      "version": "1.57",
+      "description": "Distributed tracing backend (all-in-one). Receives OTel OTLP spans from MCP server and worker. No trace persistence on restart (development mode).",
+      "purl": "pkg:docker/jaegertracing/all-in-one@1.57",
+      "properties": [
+        { "name": "internal:manifest", "value": "infrastructure/jaeger.yaml" }
+      ]
+    },
+    {
+      "type": "container",
+      "bom-ref": "infra-prometheus",
+      "name": "prometheus",
+      "version": "2.53.0",
+      "description": "Metrics collection. Scrapes /metrics from MCP server and worker. Used as Grafana data source.",
+      "purl": "pkg:docker/prom/prometheus@v2.53.0",
+      "properties": [
+        { "name": "internal:manifest", "value": "infrastructure/prometheus.yaml" }
+      ]
+    },
+    {
+      "type": "container",
+      "bom-ref": "infra-grafana",
+      "name": "grafana",
+      "version": "11.1.0",
+      "description": "Observability dashboard. Prometheus and Jaeger data sources. Dashboard: auth decisions, scan volume, error rates, latency p50/p99.",
+      "purl": "pkg:docker/grafana/grafana@11.1.0",
+      "properties": [
+        { "name": "internal:manifest", "value": "infrastructure/grafana.yaml" }
+      ]
+    },
+    {
+      "type": "container",
+      "bom-ref": "base-python",
+      "name": "python",
+      "version": "3.11.15-slim",
+      "description": "Base runtime image for both mcp-server and presidio-worker.",
+      "purl": "pkg:docker/library/python@3.11.15-slim"
+    },
+
+    // -----------------------------------------------------------------------
+    // Python libraries — mcp-server (src/mcp_server/requirements.lock.txt)
+    // -----------------------------------------------------------------------
+
+    { "type": "library", "bom-ref": "pkg:pypi/annotated-doc@0.0.4",                             "name": "annotated-doc",                             "version": "0.0.4",   "purl": "pkg:pypi/annotated-doc@0.0.4" },
+    { "type": "library", "bom-ref": "pkg:pypi/annotated-types@0.7.0",                           "name": "annotated-types",                           "version": "0.7.0",   "purl": "pkg:pypi/annotated-types@0.7.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/anyio@4.13.0",                                    "name": "anyio",                                     "version": "4.13.0",  "purl": "pkg:pypi/anyio@4.13.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/attrs@26.1.0",                                    "name": "attrs",                                     "version": "26.1.0",  "purl": "pkg:pypi/attrs@26.1.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/certifi@2026.2.25",                               "name": "certifi",                                   "version": "2026.2.25", "purl": "pkg:pypi/certifi@2026.2.25" },
+    { "type": "library", "bom-ref": "pkg:pypi/cffi@2.0.0",                                      "name": "cffi",                                      "version": "2.0.0",   "purl": "pkg:pypi/cffi@2.0.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/click@8.3.1",                                     "name": "click",                                     "version": "8.3.1",   "purl": "pkg:pypi/click@8.3.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/cryptography@46.0.5",                             "name": "cryptography",                              "version": "46.0.5",  "purl": "pkg:pypi/cryptography@46.0.5", "licenses": [{ "license": { "name": "Apache-2.0 AND BSD-3-Clause" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/fastapi@0.135.2",                                 "name": "fastapi",                                   "version": "0.135.2", "purl": "pkg:pypi/fastapi@0.135.2", "licenses": [{ "license": { "id": "MIT" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/googleapis-common-protos@1.73.0",                 "name": "googleapis-common-protos",                  "version": "1.73.0",  "purl": "pkg:pypi/googleapis-common-protos@1.73.0", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/grpcio@1.78.0",                                   "name": "grpcio",                                    "version": "1.78.0",  "purl": "pkg:pypi/grpcio@1.78.0", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/h11@0.16.0",                                      "name": "h11",                                       "version": "0.16.0",  "purl": "pkg:pypi/h11@0.16.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/httpcore@1.0.9",                                  "name": "httpcore",                                  "version": "1.0.9",   "purl": "pkg:pypi/httpcore@1.0.9" },
+    { "type": "library", "bom-ref": "pkg:pypi/httptools@0.7.1",                                 "name": "httptools",                                 "version": "0.7.1",   "purl": "pkg:pypi/httptools@0.7.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/httpx@0.28.1",                                    "name": "httpx",                                     "version": "0.28.1",  "purl": "pkg:pypi/httpx@0.28.1", "licenses": [{ "license": { "id": "BSD-3-Clause" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/httpx-sse@0.4.3",                                 "name": "httpx-sse",                                 "version": "0.4.3",   "purl": "pkg:pypi/httpx-sse@0.4.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/idna@3.11",                                       "name": "idna",                                      "version": "3.11",    "purl": "pkg:pypi/idna@3.11" },
+    { "type": "library", "bom-ref": "pkg:pypi/importlib-metadata@8.7.1",                        "name": "importlib-metadata",                        "version": "8.7.1",   "purl": "pkg:pypi/importlib-metadata@8.7.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/jsonschema@4.26.0",                               "name": "jsonschema",                                "version": "4.26.0",  "purl": "pkg:pypi/jsonschema@4.26.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/jsonschema-specifications@2025.9.1",              "name": "jsonschema-specifications",                 "version": "2025.9.1", "purl": "pkg:pypi/jsonschema-specifications@2025.9.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/mcp@1.26.0",                                      "name": "mcp",                                       "version": "1.26.0",  "purl": "pkg:pypi/mcp@1.26.0", "licenses": [{ "license": { "id": "MIT" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/opentelemetry-api@1.40.0",                        "name": "opentelemetry-api",                         "version": "1.40.0",  "purl": "pkg:pypi/opentelemetry-api@1.40.0", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.40.0", "name": "opentelemetry-exporter-otlp-proto-common",  "version": "1.40.0",  "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.40.0", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.40.0",  "name": "opentelemetry-exporter-otlp-proto-grpc",    "version": "1.40.0",  "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.40.0", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/opentelemetry-proto@1.40.0",                      "name": "opentelemetry-proto",                       "version": "1.40.0",  "purl": "pkg:pypi/opentelemetry-proto@1.40.0", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/opentelemetry-sdk@1.40.0",                        "name": "opentelemetry-sdk",                         "version": "1.40.0",  "purl": "pkg:pypi/opentelemetry-sdk@1.40.0", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/opentelemetry-semantic-conventions@0.61b0",       "name": "opentelemetry-semantic-conventions",        "version": "0.61b0",  "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.61b0", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/prometheus-client@0.24.1",                        "name": "prometheus-client",                         "version": "0.24.1",  "purl": "pkg:pypi/prometheus-client@0.24.1", "licenses": [{ "license": { "id": "Apache-2.0" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/protobuf@6.33.6",                                 "name": "protobuf",                                  "version": "6.33.6",  "purl": "pkg:pypi/protobuf@6.33.6" },
+    { "type": "library", "bom-ref": "pkg:pypi/pycparser@3.0",                                   "name": "pycparser",                                 "version": "3.0",     "purl": "pkg:pypi/pycparser@3.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/pydantic@2.12.5",                                 "name": "pydantic",                                  "version": "2.12.5",  "purl": "pkg:pypi/pydantic@2.12.5", "licenses": [{ "license": { "id": "MIT" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/pydantic-core@2.41.5",                            "name": "pydantic-core",                             "version": "2.41.5",  "purl": "pkg:pypi/pydantic-core@2.41.5", "licenses": [{ "license": { "id": "MIT" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/pydantic-settings@2.13.1",                        "name": "pydantic-settings",                         "version": "2.13.1",  "purl": "pkg:pypi/pydantic-settings@2.13.1", "licenses": [{ "license": { "id": "MIT" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/pyjwt@2.12.1",                                    "name": "pyjwt",                                     "version": "2.12.1",  "purl": "pkg:pypi/pyjwt@2.12.1", "licenses": [{ "license": { "id": "MIT" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/python-dotenv@1.2.2",                             "name": "python-dotenv",                             "version": "1.2.2",   "purl": "pkg:pypi/python-dotenv@1.2.2" },
+    { "type": "library", "bom-ref": "pkg:pypi/python-multipart@0.0.22",                         "name": "python-multipart",                          "version": "0.0.22",  "purl": "pkg:pypi/python-multipart@0.0.22" },
+    { "type": "library", "bom-ref": "pkg:pypi/pyyaml@6.0.3",                                    "name": "pyyaml",                                    "version": "6.0.3",   "purl": "pkg:pypi/pyyaml@6.0.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/referencing@0.37.0",                              "name": "referencing",                               "version": "0.37.0",  "purl": "pkg:pypi/referencing@0.37.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/rpds-py@0.30.0",                                  "name": "rpds-py",                                   "version": "0.30.0",  "purl": "pkg:pypi/rpds-py@0.30.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/sse-starlette@3.3.3",                             "name": "sse-starlette",                             "version": "3.3.3",   "purl": "pkg:pypi/sse-starlette@3.3.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/starlette@1.0.0",                                 "name": "starlette",                                 "version": "1.0.0",   "purl": "pkg:pypi/starlette@1.0.0", "licenses": [{ "license": { "id": "BSD-3-Clause" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/typing-extensions@4.15.0",                        "name": "typing-extensions",                         "version": "4.15.0",  "purl": "pkg:pypi/typing-extensions@4.15.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/typing-inspection@0.4.2",                         "name": "typing-inspection",                         "version": "0.4.2",   "purl": "pkg:pypi/typing-inspection@0.4.2" },
+    { "type": "library", "bom-ref": "pkg:pypi/uvicorn@0.42.0",                                  "name": "uvicorn",                                   "version": "0.42.0",  "purl": "pkg:pypi/uvicorn@0.42.0", "licenses": [{ "license": { "id": "BSD-3-Clause" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/uvloop@0.22.1",                                   "name": "uvloop",                                    "version": "0.22.1",  "purl": "pkg:pypi/uvloop@0.22.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/watchfiles@1.1.1",                                "name": "watchfiles",                                "version": "1.1.1",   "purl": "pkg:pypi/watchfiles@1.1.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/websockets@16.0",                                 "name": "websockets",                                "version": "16.0",    "purl": "pkg:pypi/websockets@16.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/zipp@3.23.0",                                     "name": "zipp",                                      "version": "3.23.0",  "purl": "pkg:pypi/zipp@3.23.0" },
+
+    // -----------------------------------------------------------------------
+    // Python libraries — presidio-worker only
+    // (src/worker/requirements.lock.txt — packages not shared with mcp-server)
+    // -----------------------------------------------------------------------
+
+    { "type": "library", "bom-ref": "pkg:pypi/blis@1.3.3",                                      "name": "blis",                                      "version": "1.3.3",   "purl": "pkg:pypi/blis@1.3.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/catalogue@2.0.10",                                "name": "catalogue",                                 "version": "2.0.10",  "purl": "pkg:pypi/catalogue@2.0.10" },
+    { "type": "library", "bom-ref": "pkg:pypi/charset-normalizer@3.4.6",                        "name": "charset-normalizer",                        "version": "3.4.6",   "purl": "pkg:pypi/charset-normalizer@3.4.6" },
+    { "type": "library", "bom-ref": "pkg:pypi/cloudpathlib@0.23.0",                             "name": "cloudpathlib",                              "version": "0.23.0",  "purl": "pkg:pypi/cloudpathlib@0.23.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/confection@1.3.3",                                "name": "confection",                                "version": "1.3.3",   "purl": "pkg:pypi/confection@1.3.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/cymem@2.0.13",                                    "name": "cymem",                                     "version": "2.0.13",  "purl": "pkg:pypi/cymem@2.0.13" },
+    { "type": "library", "bom-ref": "pkg:pypi/filelock@3.25.2",                                 "name": "filelock",                                  "version": "3.25.2",  "purl": "pkg:pypi/filelock@3.25.2" },
+    { "type": "library", "bom-ref": "pkg:pypi/jinja2@3.1.6",                                    "name": "jinja2",                                    "version": "3.1.6",   "purl": "pkg:pypi/jinja2@3.1.6" },
+    { "type": "library", "bom-ref": "pkg:pypi/markdown-it-py@4.0.0",                            "name": "markdown-it-py",                            "version": "4.0.0",   "purl": "pkg:pypi/markdown-it-py@4.0.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/markupsafe@3.0.3",                                "name": "markupsafe",                                "version": "3.0.3",   "purl": "pkg:pypi/markupsafe@3.0.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/mdurl@0.1.2",                                     "name": "mdurl",                                     "version": "0.1.2",   "purl": "pkg:pypi/mdurl@0.1.2" },
+    { "type": "library", "bom-ref": "pkg:pypi/murmurhash@1.0.15",                               "name": "murmurhash",                                "version": "1.0.15",  "purl": "pkg:pypi/murmurhash@1.0.15" },
+    { "type": "library", "bom-ref": "pkg:pypi/numpy@2.4.3",                                     "name": "numpy",                                     "version": "2.4.3",   "purl": "pkg:pypi/numpy@2.4.3", "licenses": [{ "license": { "id": "BSD-3-Clause" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/packaging@26.0",                                  "name": "packaging",                                 "version": "26.0",    "purl": "pkg:pypi/packaging@26.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/phonenumbers@9.0.26",                             "name": "phonenumbers",                              "version": "9.0.26",  "purl": "pkg:pypi/phonenumbers@9.0.26" },
+    { "type": "library", "bom-ref": "pkg:pypi/preshed@3.0.13",                                  "name": "preshed",                                   "version": "3.0.13",  "purl": "pkg:pypi/preshed@3.0.13" },
+    { "type": "library", "bom-ref": "pkg:pypi/presidio-analyzer@2.2.362",                       "name": "presidio-analyzer",                         "version": "2.2.362", "purl": "pkg:pypi/presidio-analyzer@2.2.362", "licenses": [{ "license": { "id": "MIT" } }] },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pygments@2.19.2",
+      "name": "pygments",
+      "version": "2.19.2",
+      "purl": "pkg:pypi/pygments@2.19.2",
+      "properties": [
+        { "name": "internal:vulnerability-note", "value": "CVE-2026-4539 — risk accepted. See src/worker/.pip-audit-ignore. Not invoked at runtime; transitive via rich <- spacy/presidio CLI tools absent in production image." }
+      ]
+    },
+    { "type": "library", "bom-ref": "pkg:pypi/regex@2026.2.28",                                 "name": "regex",                                     "version": "2026.2.28", "purl": "pkg:pypi/regex@2026.2.28" },
+    { "type": "library", "bom-ref": "pkg:pypi/requests@2.32.5",                                 "name": "requests",                                  "version": "2.32.5",  "purl": "pkg:pypi/requests@2.32.5" },
+    { "type": "library", "bom-ref": "pkg:pypi/requests-file@3.0.1",                             "name": "requests-file",                             "version": "3.0.1",   "purl": "pkg:pypi/requests-file@3.0.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/rich@14.3.3",                                     "name": "rich",                                      "version": "14.3.3",  "purl": "pkg:pypi/rich@14.3.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/shellingham@1.5.4",                               "name": "shellingham",                               "version": "1.5.4",   "purl": "pkg:pypi/shellingham@1.5.4" },
+    { "type": "library", "bom-ref": "pkg:pypi/smart-open@7.5.1",                                "name": "smart-open",                                "version": "7.5.1",   "purl": "pkg:pypi/smart-open@7.5.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/spacy@3.8.13",                                    "name": "spacy",                                     "version": "3.8.13",  "purl": "pkg:pypi/spacy@3.8.13", "licenses": [{ "license": { "id": "MIT" } }] },
+    { "type": "library", "bom-ref": "pkg:pypi/spacy-legacy@3.0.12",                             "name": "spacy-legacy",                              "version": "3.0.12",  "purl": "pkg:pypi/spacy-legacy@3.0.12" },
+    { "type": "library", "bom-ref": "pkg:pypi/spacy-loggers@1.0.5",                             "name": "spacy-loggers",                             "version": "1.0.5",   "purl": "pkg:pypi/spacy-loggers@1.0.5" },
+    { "type": "library", "bom-ref": "pkg:pypi/srsly@2.5.3",                                     "name": "srsly",                                     "version": "2.5.3",   "purl": "pkg:pypi/srsly@2.5.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/thinc@8.3.13",                                    "name": "thinc",                                     "version": "8.3.13",  "purl": "pkg:pypi/thinc@8.3.13" },
+    { "type": "library", "bom-ref": "pkg:pypi/tldextract@5.3.1",                                "name": "tldextract",                                "version": "5.3.1",   "purl": "pkg:pypi/tldextract@5.3.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/tqdm@4.67.3",                                     "name": "tqdm",                                      "version": "4.67.3",  "purl": "pkg:pypi/tqdm@4.67.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/typer@0.24.1",                                    "name": "typer",                                     "version": "0.24.1",  "purl": "pkg:pypi/typer@0.24.1" },
+    { "type": "library", "bom-ref": "pkg:pypi/urllib3@2.6.3",                                   "name": "urllib3",                                   "version": "2.6.3",   "purl": "pkg:pypi/urllib3@2.6.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/wasabi@1.1.3",                                    "name": "wasabi",                                    "version": "1.1.3",   "purl": "pkg:pypi/wasabi@1.1.3" },
+    { "type": "library", "bom-ref": "pkg:pypi/weasel@1.0.0",                                    "name": "weasel",                                    "version": "1.0.0",   "purl": "pkg:pypi/weasel@1.0.0" },
+    { "type": "library", "bom-ref": "pkg:pypi/wrapt@2.1.2",                                     "name": "wrapt",                                     "version": "2.1.2",   "purl": "pkg:pypi/wrapt@2.1.2" }
+
+  ],
+
+  "dependencies": [
+
+    // Solution depends on both services and all infrastructure
+    {
+      "ref": "solution",
+      "dependsOn": [
+        "mcp-server",
+        "presidio-worker",
+        "infra-keycloak",
+        "infra-jaeger",
+        "infra-prometheus",
+        "infra-grafana"
+      ]
+    },
+
+    // MCP server — direct Python dependencies (from requirements.lock.txt annotations)
+    {
+      "ref": "mcp-server",
+      "dependsOn": [
+        "base-python",
+        "pkg:pypi/fastapi@0.135.2",
+        "pkg:pypi/httpx@0.28.1",
+        "pkg:pypi/mcp@1.26.0",
+        "pkg:pypi/opentelemetry-api@1.40.0",
+        "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.40.0",
+        "pkg:pypi/opentelemetry-sdk@1.40.0",
+        "pkg:pypi/prometheus-client@0.24.1",
+        "pkg:pypi/pydantic@2.12.5",
+        "pkg:pypi/pyjwt@2.12.1",
+        "pkg:pypi/uvicorn@0.42.0"
+      ]
+    },
+
+    // Presidio worker — direct Python dependencies
+    {
+      "ref": "presidio-worker",
+      "dependsOn": [
+        "base-python",
+        "pkg:pypi/fastapi@0.135.2",
+        "pkg:pypi/opentelemetry-api@1.40.0",
+        "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.40.0",
+        "pkg:pypi/opentelemetry-sdk@1.40.0",
+        "pkg:pypi/presidio-analyzer@2.2.362",
+        "pkg:pypi/prometheus-client@0.24.1",
+        "pkg:pypi/pydantic@2.12.5",
+        "pkg:pypi/spacy@3.8.13",
+        "pkg:pypi/uvicorn@0.42.0"
+      ]
+    }
+
+  ],
+
+  "vulnerabilities": [
+    {
+      "bom-ref": "vuln-CVE-2026-4539",
+      "id": "CVE-2026-4539",
+      "description": "Vulnerability in pygments 2.19.2 (transitive: rich <- spacy/presidio-analyzer). pygments is not invoked at runtime in the worker service path; it is pulled in by rich for terminal output in CLI tools not present in the production image.",
+      "affects": [
+        { "ref": "pkg:pypi/pygments@2.19.2" }
+      ],
+      "analysis": {
+        "state": "in_triage",
+        "justification": "code_not_reachable",
+        "detail": "No upstream fix available as of 2026-03-24. Risk accepted. Review when a fixed pygments release is published. See src/worker/.pip-audit-ignore for authoritative record."
+      },
+      "ratings": [
+        { "severity": "low", "method": "other", "justification": "Not reachable at runtime in production image." }
+      ]
+    }
+  ]
+}

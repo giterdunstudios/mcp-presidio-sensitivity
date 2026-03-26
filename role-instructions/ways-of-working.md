@@ -165,6 +165,42 @@ These concerns are real and will matter at later phases. Absorb them into the th
 
 ---
 
+### 4.5 Engineering Practices Lead
+
+**Status:** Permanent core role (5th standing member). Ratified by council 2026-03-26.
+
+**Owns:**
+- Best practices backlog (`planning/best-practices-backlog.md`) — cross-cutting items that don't belong exclusively to any one role
+- Team workflow health: monitoring that all roles are producing, unblocked, and coordinating effectively
+- Communication standards: how the team communicates decisions, handoffs, and state across roles and sessions
+- Onboarding standards: ensuring the project can be picked up by a new contributor without tribal knowledge — documentation quality, setup reproducibility, orientation materials
+- `ways-of-working.md` maintenance — keeping the shared operating agreement current as the team evolves
+- Testing strategy: what gets tested, at what level (unit / integration / e2e), and what the exit gate looks like for each phase
+- Dev environment reproducibility: setup-from-scratch capability, prerequisite documentation, disaster recovery of the local stack
+- Dev/prod parity standard: defines the acceptable delta between local dev and production topology; flags when simplifications cross the line into risk
+- Coordination scheduling: when a best practices item requires collaboration across roles, this role owns getting that scheduled — does not block delivery, prioritises timing
+- Temporary ownership: on a small team, this role may carry temporary ownership of items that have no natural home, until a permanent owner is identified
+
+**Does NOT own by default:**
+- Security control design or sign-off (Security / Privacy Lead)
+- Governance security artifacts — e.g. SBOM (`bom.json`) is owned and signed off by Security / Privacy Lead
+- Application architecture decisions (Technical Implementation Lead)
+- Scope and phase boundaries (Product / Scope Lead)
+- Test *implementation* for a specific feature — each role implements tests for their own work items; this role owns the coverage standard and strategy, not the code
+
+**Relationship to other core roles:**
+- With Security / Privacy Lead: coordinates on testing strategy for security controls and on what best practices gates are required before phase exit; does not own security artifacts
+- With Technical Implementation Lead: dev/prod parity decisions and reproducibility — Phase 2 (Istio, Cilium) will create pressure on the parity boundary; this role watches for drift
+- With Product / Scope Lead: best practices gates are part of phase exit criteria; this role surfaces what is owed at each gate and whether the team's workflows are healthy enough to sustain the next phase
+
+**Failure mode prevented:**
+A team that is producing code but not communicating state effectively; a project that cannot be onboarded onto by a new contributor; a dev environment that cannot be rebuilt from scratch; a set of workflows that have drifted from best practices with no one watching.
+
+**Anti-sprawl justification (why this separation is warranted):**
+The concern is team workflow health and institutional knowledge — not any single technical deliverable. As the project grows across phases, the risk is that each role optimises locally and no one owns the connective tissue: how we communicate, how we onboard, whether our workflows are reproducible and transparent. That concern is large enough, ongoing enough, and orthogonal enough to the three core technical roles to warrant a dedicated owner.
+
+---
+
 ## 5. Stage-gated workflow
 
 Work progresses through stages in sequence. Each stage has a defined confirmation point with the operator before the next stage begins. Do not skip stages. Do not begin the next stage before the confirmation point is reached.
@@ -262,6 +298,104 @@ Strong checkpoint before concrete engineering execution becomes committed.
 - Phase 2 trigger conditions
 - Observation inputs for the deferred classification model
 - Iteration backlog
+
+---
+
+## 5a. Spec completeness standard
+
+A spec is not ready for implementation if any of the following are missing where applicable. Any council member reviewing a spec — or any contributor assisting with planning — must call out missing elements before implementation begins. Do not proceed to implementation with an incomplete spec.
+
+---
+
+### Required elements
+
+**1. Burst role definition**
+
+If the work requires specialized knowledge outside the three core roles, define the burst role before the spec is accepted:
+- Activation trigger — what specifically justifies it
+- Owned scope — what this role owns and does not own
+- Deactivation condition — when the role is dissolved
+
+**2. Council role assignments**
+
+Every spec must state which core council roles are in scope and what they own for this work. Roles not listed are not responsible.
+
+**3. Handoff contract**
+
+If implementation has waves or phases where early work unblocks later work, the handoff contract must be explicitly stated before Wave 2 agents begin:
+- What decisions or outputs must exist
+- Who publishes them
+- What downstream agents cannot start without them
+
+**4. Parallel lanes**
+
+If Wave 2+ work can be parallelized, each lane must define:
+- Scope (what it does)
+- Files touched (non-overlapping with other lanes)
+- Dependencies satisfied by the handoff contract
+
+---
+
+### Enforcement
+
+- Any council member may block a spec from proceeding to implementation if required elements are absent.
+- When assisting with planning, proactively identify and flag missing elements — do not wait to be asked.
+- The k3d migration spec (`planning/k3d-migration-spec.md`) is the reference implementation of this standard.
+
+---
+
+## 5b. Council workboard and awareness standard
+
+All active roles maintain a section in `planning/council-workboard.md`. This file is required reading at the start of every session (see §10).
+
+### Per-role format
+
+```
+## [Role Name]
+### Active
+- [work item] — note, any cross-role dependency
+
+### Queued
+- [work item] — waiting for: [role or condition]
+
+### Needs coordination
+- [work item] — requires: [roles], proposed timing: [phase / gate / session]
+```
+
+### Protocol
+
+- Any role updates their section when starting or completing a work item.
+- When a work item has a cross-role dependency, the initiating role adds it to `Needs coordination` and tags the relevant role(s).
+- The tagged role acknowledges by adding the item to their own `Queued` section with a timing note.
+- Engineering Practices Lead reviews the full board at each session start and flags stale, unacknowledged, or blocked coordination items to the council.
+- Completed items are removed from the board; they do not need to be archived here (git history is sufficient).
+
+---
+
+## 5c. Council meetings
+
+Council meetings are **impromptu** — they have no fixed cadence. Any role may call one. They are used for high-level and strategic discussion, not day-to-day implementation decisions.
+
+### When to call a council meeting
+- A new role is being proposed or ratified
+- A decision is being reversed or significantly modified
+- A phase boundary or exit criteria is in dispute
+- A best practices item has been raised and **no role is willing to schedule it for valid project reasons** (see escalation rule below)
+- A critical flag has been raised (see individual decision entries in `planning/decision-log.md`)
+- Strategic direction needs alignment before a phase begins
+
+### Best practices escalation rule
+
+If a best practices item is proposed by the Engineering Practices Lead and all roles decline to schedule it — each for valid, documented project reasons — the item must be raised at the next council meeting. It does not go silently into the backlog indefinitely. At the council meeting, the item is either:
+1. Scheduled with an agreed timing, or
+2. Explicitly deferred with a documented rationale and a re-evaluation trigger (phase gate, external event, or date)
+
+A best practices item may only be permanently closed without implementation if the full council agrees it is no longer relevant. "We don't have time" is not sufficient — it must become a documented deferral with a trigger.
+
+### Meeting outputs
+- Decisions logged in `planning/decision-log.md` with source `council-meeting`
+- Updated entries in `planning/council-workboard.md` where scheduling was agreed
+- `ways-of-working.md` updated if the meeting changed a standing rule
 
 ---
 
@@ -364,5 +498,7 @@ The following files are the persistent working memory for this project. All cont
 | `task_plan.md` | Phases, steps, decision log, open questions |
 | `findings.md` | Research findings, key constraints, architectural decisions |
 | `progress.md` | Session-by-session log of what was done and what is next |
+| `council-workboard.md` | Cross-role active work, queued items, and coordination requests — read first to understand current state across all roles |
+| `best-practices-backlog.md` | Engineering Practices Lead backlog — governance, testing, reproducibility, dev/prod parity items |
 
 > These files are the source of truth for project state. If something is not in these files, it did not happen from the project's perspective.

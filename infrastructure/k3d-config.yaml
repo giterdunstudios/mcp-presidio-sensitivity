@@ -1,0 +1,41 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: mcp-presidio
+servers: 1
+agents: 0
+registries:
+  use:
+    - k3d-mcp-registry:5000
+ports:
+  # Keycloak HTTP endpoint (token issuance, JWKS, admin console)
+  - port: 8080:30880
+    nodeFilters:
+      - server:0
+  # Presidio worker
+  - port: 8090:30890
+    nodeFilters:
+      - server:0
+  # MCP server
+  - port: 8000:30800
+    nodeFilters:
+      - server:0
+  # Jaeger UI
+  - port: 16686:31686
+    nodeFilters:
+      - server:0
+  # Prometheus
+  - port: 9090:31090
+    nodeFilters:
+      - server:0
+  # Grafana
+  - port: 3000:31300
+    nodeFilters:
+      - server:0
+options:
+  k3s:
+    extraArgs:
+      # Disable Traefik — not used in this stack; saves memory for Presidio/Istio
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*

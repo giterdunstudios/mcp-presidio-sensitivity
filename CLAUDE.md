@@ -4,14 +4,14 @@
 MCP server that classifies text payloads for data sensitivity using Microsoft
 Presidio. Exposes a single MCP tool (`classify_payload_sensitivity`) behind JWT
 authentication (Keycloak, OAuth 2.0 client credentials). Returns bounded scan
-results — never payload content. Deployed to a local kind cluster for development.
+results — never payload content. Deployed to a local k3d cluster for development.
 
 Key components:
 - `src/mcp_server/` — FastAPI + FastMCP server, JWT middleware, audit trail
 - `src/worker/` — Presidio analyzer worker (internal, not directly exposed)
 - `helm/` — Helm charts for both services
 - `keycloak/` — Realm import for local Keycloak instance
-- `infrastructure/` — kind cluster config, Keycloak deployment manifest
+- `infrastructure/` — k3d cluster config, Keycloak deployment manifest
 - `scripts/` — All dev scripts (see below)
 - `planning/` — Specs, decision log, auth flow diagrams, pipeline diagram
 
@@ -19,23 +19,52 @@ Key components:
 
 ### Required host tools (pinned versions used in development)
 
-| Tool | Version | Install |
-|---|---|---|
-| Docker | 29.3.0 | https://docs.docker.com/engine/install/ |
-| kind | 0.23.0 | `go install sigs.k8s.io/kind@v0.23.0` or https://kind.sigs.k8s.io/docs/user/quick-start/#installation |
-| kubectl | 1.35.3 | https://kubernetes.io/docs/tasks/tools/ |
-| helm | 3.20.1 | https://helm.sh/docs/intro/install/ |
+| Tool | Version |
+|---|---|
+| Docker Engine | 29.3.0 |
+| k3d | 5.x |
+| kubectl | 1.35.3 |
+| helm | 3.20.1 |
+| curl | system |
 
 Newer patch versions of the same minor are generally fine. Avoid mixing major
 versions (e.g. helm 2.x vs 3.x).
 
-### WSL2 specifics (Ubuntu)
+### Installing prerequisites (WSL2 / Ubuntu)
 
+**Docker Engine**
 ```bash
-# Add your user to the docker group — required for kind and docker commands
+# Install Docker Engine (not Docker Desktop) for WSL2
+curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 newgrp docker        # apply without logout (interactive shells only)
+```
 
+**k3d**
+```bash
+curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+# or: wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+k3d version          # verify install
+```
+
+**kubectl**
+```bash
+curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+kubectl version --client  # verify install
+```
+
+**helm**
+```bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+helm version          # verify install
+```
+
+**curl** — already present on most Ubuntu installs. If not: `sudo apt-get install -y curl`
+
+### WSL2 note
+
+```bash
 # setup-local.sh uses 'sg docker -c ...' to handle the WSL2 case where
 # newgrp doesn't propagate to non-interactive subshells. No extra steps needed
 # beyond adding yourself to the docker group above.
@@ -47,7 +76,7 @@ newgrp docker        # apply without logout (interactive shells only)
 git clone <repo>
 cd projects/mcp-presidio-sensitivity
 
-./scripts/setup-local.sh           # bootstraps kind cluster, Keycloak, worker, MCP server
+./scripts/setup-local.sh           # bootstraps k3d cluster + registry, Keycloak, worker, MCP server
 ./scripts/keycloak-admin.sh set-ttl 60   # enforce DEC-002 token TTL
 ./scripts/status.sh                # confirm everything is healthy
 ```

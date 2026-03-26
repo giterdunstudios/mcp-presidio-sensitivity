@@ -11,10 +11,10 @@
 replicaCount: 1
 
 image:
-  repository: presidio-worker
+  repository: k3d-mcp-registry:5000/presidio-worker
   tag: "0.1.0"
-  # Use locally built image — do not pull from registry
-  pullPolicy: Never
+  # Pull from local k3d registry
+  pullPolicy: Always
 
 # Relaxed resource constraints for local development
 resources:
