@@ -11,6 +11,9 @@ namespace: mcp-presidio
 
 auth:
   adminUser: admin
+  # Local dev credential — intentionally weak and committed to source control.
+  # Acceptable because: kind cluster is ephemeral, no TLS, no external network
+  # access beyond localhost port mappings. Do NOT use in any non-local environment.
   adminPassword: change-me-in-prod
 
 # Dev mode: no TLS, no clustering, embedded H2 database (no PostgreSQL)
