@@ -31,6 +31,14 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    # Jaeger — OTLP span export (A3 distributed tracing)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: jaeger
+      ports:
+        - protocol: TCP
+          port: 4317
     # DNS — required for cluster-internal service resolution
     - to:
         - namespaceSelector:

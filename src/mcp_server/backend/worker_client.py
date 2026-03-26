@@ -93,6 +93,13 @@ async def call_worker(
         "Content-Type": "application/json",
         "X-Correlation-ID": correlation_id,
     }
+    # Inject W3C traceparent so the worker can continue the distributed trace.
+    # traceparent carries only trace/span IDs — no payload content.
+    try:
+        from opentelemetry.propagate import inject as _otel_inject  # noqa: PLC0415
+        _otel_inject(headers)
+    except Exception:
+        pass
 
     scan_url = f"{config.WORKER_URL.rstrip('/')}/scan"
 

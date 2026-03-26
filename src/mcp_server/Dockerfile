@@ -9,7 +9,7 @@
 #   - CPU/memory limits are enforced by Helm, not here
 # ---------------------------------------------------------------------------
 
-FROM python:3.11-slim
+FROM python:3.11.15-slim
 
 # -- Non-root user ----------------------------------------------------------
 # uid 1001 is distinct from the worker (uid 1000) to avoid shared identity

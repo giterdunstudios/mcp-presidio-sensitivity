@@ -12,6 +12,29 @@ spec:
       {{- include "presidio-worker.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
+    - Egress
+  egress:
+    # Jaeger — OTLP span export (A3 distributed tracing)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: jaeger
+      ports:
+        - protocol: TCP
+          port: 4317
+    # DNS — required for cluster-internal service resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
   ingress:
     # Allow inbound scan requests from the MCP server only.
     # All other ingress is denied by default.

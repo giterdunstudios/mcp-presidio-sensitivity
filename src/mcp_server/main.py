@@ -53,6 +53,8 @@ from authorization.policy import is_authorized
 from audit.trail import write_audit_record
 from backend.worker_client import WorkerError, call_worker
 from observability.logging import configure_logging, log_request
+from observability.tracing import configure_tracing, get_tracer
+from opentelemetry.trace import SpanKind, StatusCode
 
 # ---------------------------------------------------------------------------
 # Logging — must be configured before any logger.getLogger() calls fire
@@ -132,31 +134,39 @@ async def classify_payload_sensitivity(
 
     effective_workflow_id = workflow_id or correlation_id
 
-    try:
-        result = await call_worker(
-            content=content,
-            content_type=content_type,
-            language=language,
-            tenant_policy=tenant_policy,
-            threshold_profile=threshold_profile,
-            correlation_id=effective_workflow_id,
-            source_system="mcp-presidio-sensitivity",
-        )
-        write_audit_record(
-            correlation_id=effective_workflow_id,
-            caller_subject=caller_subject,
-            result=result,
-        )
-        return result.model_dump(mode="json")
-    except WorkerError as exc:
-        write_audit_record(
-            correlation_id=effective_workflow_id,
-            caller_subject=caller_subject,
-            error=exc,
-        )
-        # Raise as a plain exception — MCP SDK surfaces this as a tool error.
-        # No payload content in exc.message (WorkerError never receives payload).
-        raise RuntimeError(f"{exc.error_code}: {exc.message}") from exc
+    with get_tracer().start_as_current_span("tool.classify_payload_sensitivity") as span:
+        # SECURITY: never set content or any payload-derived attribute on the span
+        span.set_attribute("caller_subject", caller_subject)
+        span.set_attribute("correlation_id", effective_workflow_id)
+
+        try:
+            result = await call_worker(
+                content=content,
+                content_type=content_type,
+                language=language,
+                tenant_policy=tenant_policy,
+                threshold_profile=threshold_profile,
+                correlation_id=effective_workflow_id,
+                source_system="mcp-presidio-sensitivity",
+            )
+            write_audit_record(
+                correlation_id=effective_workflow_id,
+                caller_subject=caller_subject,
+                result=result,
+            )
+            span.set_attribute("scan_id", result.scan_id)
+            span.set_attribute("decision", result.decision)
+            return result.model_dump(mode="json")
+        except WorkerError as exc:
+            span.set_status(StatusCode.ERROR, exc.error_code)
+            write_audit_record(
+                correlation_id=effective_workflow_id,
+                caller_subject=caller_subject,
+                error=exc,
+            )
+            # Raise as a plain exception — MCP SDK surfaces this as a tool error.
+            # No payload content in exc.message (WorkerError never receives payload).
+            raise RuntimeError(f"{exc.error_code}: {exc.message}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +177,10 @@ async def classify_payload_sensitivity(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_tracing(
+        service_name="mcp-presidio-sensitivity",
+        service_version=config.SERVICE_VERSION,
+    )
     logger.info(
         "MCP server starting",
         extra={
@@ -246,95 +260,111 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return response
 
         # ------------------------------------------------------------------
-        # Token validation
+        # Protected paths — span covers auth + forwarding
         # ------------------------------------------------------------------
-        try:
-            claims = verify_token(request.headers.get("Authorization"))
-        except TokenMissingError:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            log_request(
-                logger=logger,
-                correlation_id=correlation_id,
-                caller_subject="anonymous",
-                tool=path,
-                auth_decision="deny-401",
-                duration_ms=duration_ms,
-            )
-            _current_correlation_id.reset(token)
-            _current_caller_subject.reset(caller_subject_token)
-            return build_401_response("invalid_token")
-        except TokenInvalidError:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            log_request(
-                logger=logger,
-                correlation_id=correlation_id,
-                caller_subject="anonymous",
-                tool=path,
-                auth_decision="deny-401",
-                duration_ms=duration_ms,
-            )
-            _current_correlation_id.reset(token)
-            _current_caller_subject.reset(caller_subject_token)
-            return build_401_response("invalid_token")
+        with get_tracer().start_as_current_span(
+            "http.request",
+            kind=SpanKind.SERVER,
+        ) as span:
+            span.set_attribute("http.path", path)
+            span.set_attribute("http.method", request.method)
+            span.set_attribute("correlation_id", correlation_id)
 
-        caller_subject = claims.get("_subject", "unknown")
-        scopes: frozenset[str] = claims.get("_scopes", frozenset())
-
-        request.state.caller_subject = caller_subject
-        request.state.claims = claims
-
-        # Update caller_subject context var now that we have the real subject
-        _current_caller_subject.reset(caller_subject_token)
-        caller_subject_token = _current_caller_subject.set(caller_subject)
-
-        # ------------------------------------------------------------------
-        # Scope authorization — classify tool requires tools:classify.submit
-        # MCP SDK routes its tool calls through /mcp
-        # ------------------------------------------------------------------
-        # Determine which tool is being called for scope enforcement.
-        # MCP routes all tool invocations through the /mcp path; the
-        # required scope for all tool calls is tools:classify.submit.
-        if path.startswith("/mcp"):
-            authorized, required_scope = is_authorized(
-                "classify_payload_sensitivity", scopes
-            )
-            if not authorized:
+            # --------------------------------------------------------------
+            # Token validation
+            # --------------------------------------------------------------
+            try:
+                claims = verify_token(request.headers.get("Authorization"))
+            except TokenMissingError:
+                span.set_status(StatusCode.ERROR, "missing token")
                 duration_ms = (time.monotonic() - start_time) * 1000
                 log_request(
                     logger=logger,
                     correlation_id=correlation_id,
-                    caller_subject=caller_subject,
-                    tool="classify_payload_sensitivity",
-                    auth_decision="deny-403",
+                    caller_subject="anonymous",
+                    tool=path,
+                    auth_decision="deny-401",
                     duration_ms=duration_ms,
                 )
                 _current_correlation_id.reset(token)
                 _current_caller_subject.reset(caller_subject_token)
-                return build_403_response(required_scope)
+                return build_401_response("invalid_token")
+            except TokenInvalidError:
+                span.set_status(StatusCode.ERROR, "invalid token")
+                duration_ms = (time.monotonic() - start_time) * 1000
+                log_request(
+                    logger=logger,
+                    correlation_id=correlation_id,
+                    caller_subject="anonymous",
+                    tool=path,
+                    auth_decision="deny-401",
+                    duration_ms=duration_ms,
+                )
+                _current_correlation_id.reset(token)
+                _current_caller_subject.reset(caller_subject_token)
+                return build_401_response("invalid_token")
 
-        request.state.auth_decision = "allow"
+            caller_subject = claims.get("_subject", "unknown")
+            scopes: frozenset[str] = claims.get("_scopes", frozenset())
 
-        # ------------------------------------------------------------------
-        # Forward to route handler
-        # ------------------------------------------------------------------
-        response = await call_next(request)
+            request.state.caller_subject = caller_subject
+            request.state.claims = claims
+            span.set_attribute("caller_subject", caller_subject)
 
-        duration_ms = (time.monotonic() - start_time) * 1000
-        worker_status = getattr(request.state, "worker_status", None)
+            # Update caller_subject context var now that we have the real subject
+            _current_caller_subject.reset(caller_subject_token)
+            caller_subject_token = _current_caller_subject.set(caller_subject)
 
-        log_request(
-            logger=logger,
-            correlation_id=correlation_id,
-            caller_subject=caller_subject,
-            tool=path,
-            auth_decision="allow",
-            worker_status=worker_status,
-            duration_ms=duration_ms,
-        )
+            # --------------------------------------------------------------
+            # Scope authorization — classify tool requires tools:classify.submit
+            # MCP SDK routes its tool calls through /mcp
+            # --------------------------------------------------------------
+            # Determine which tool is being called for scope enforcement.
+            # MCP routes all tool invocations through the /mcp path; the
+            # required scope for all tool calls is tools:classify.submit.
+            if path.startswith("/mcp"):
+                authorized, required_scope = is_authorized(
+                    "classify_payload_sensitivity", scopes
+                )
+                if not authorized:
+                    span.set_status(StatusCode.ERROR, "insufficient scope")
+                    duration_ms = (time.monotonic() - start_time) * 1000
+                    log_request(
+                        logger=logger,
+                        correlation_id=correlation_id,
+                        caller_subject=caller_subject,
+                        tool="classify_payload_sensitivity",
+                        auth_decision="deny-403",
+                        duration_ms=duration_ms,
+                    )
+                    _current_correlation_id.reset(token)
+                    _current_caller_subject.reset(caller_subject_token)
+                    return build_403_response(required_scope)
 
-        _current_correlation_id.reset(token)
-        _current_caller_subject.reset(caller_subject_token)
-        return response
+            request.state.auth_decision = "allow"
+
+            # --------------------------------------------------------------
+            # Forward to route handler
+            # --------------------------------------------------------------
+            response = await call_next(request)
+            span.set_attribute("http.status_code", response.status_code)
+
+            duration_ms = (time.monotonic() - start_time) * 1000
+            worker_status = getattr(request.state, "worker_status", None)
+
+            log_request(
+                logger=logger,
+                correlation_id=correlation_id,
+                caller_subject=caller_subject,
+                tool=path,
+                auth_decision="allow",
+                worker_status=worker_status,
+                duration_ms=duration_ms,
+            )
+
+            _current_correlation_id.reset(token)
+            _current_caller_subject.reset(caller_subject_token)
+            return response
 
 
 app.add_middleware(JWTAuthMiddleware)

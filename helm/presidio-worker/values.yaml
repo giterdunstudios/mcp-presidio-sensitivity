@@ -94,3 +94,10 @@ networkPolicy:
 tmpVolume:
   enabled: true
   sizeLimit: 128Mi
+
+# ---------------------------------------------------------------------------
+# Distributed tracing — OTel SDK exports spans to Jaeger via OTLP gRPC
+# Set endpoint to "" to disable tracing (no-op tracer)
+# ---------------------------------------------------------------------------
+tracing:
+  otlpEndpoint: "http://jaeger.mcp-presidio.svc.cluster.local:4317"

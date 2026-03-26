@@ -9,7 +9,7 @@
 #   - CPU/memory limits are enforced by Helm, not here
 # ---------------------------------------------------------------------------
 
-FROM python:3.11-slim
+FROM python:3.11.15-slim
 
 # -- Non-root user ----------------------------------------------------------
 RUN groupadd --gid 1000 worker && \
@@ -34,7 +34,14 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Presidio AnalyzerEngine requires a spaCy model at startup.
 # en_core_web_lg is the Presidio default; baked into the image so the
 # container starts without internet access.
-RUN python -m spacy download en_core_web_lg
+#
+# Version is pinned explicitly: model updates change detection recall/precision,
+# which alters classification output — this is a detection behavior pin, not
+# just an operational one.
+#
+# To upgrade: bump the version below, rebuild, run demo.sh a, verify decisions.
+# Find available versions: https://github.com/explosion/spacy-models/releases
+RUN python -m spacy download en_core_web_lg-3.8.0 --direct
 
 # -- Application source ------------------------------------------------------
 COPY *.py ./

@@ -30,7 +30,7 @@ config:
   workerUrl: "http://presidio-worker.mcp-presidio.svc.cluster.local:8080"
   jwksCacheTtlSeconds: 300
   maxPayloadBytes: 1048576
-  workerTimeoutSeconds: "30.0"
+  workerTimeoutSeconds: "10.0"
   serverResourceUrl: "http://mcp-presidio-sensitivity.mcp-presidio.svc.cluster.local:8000"
   port: "8000"
 
@@ -101,3 +101,10 @@ networkPolicy:
 tmpVolume:
   enabled: true
   sizeLimit: 64Mi
+
+# ---------------------------------------------------------------------------
+# Distributed tracing — OTel SDK exports spans to Jaeger via OTLP gRPC
+# Set endpoint to "" to disable tracing (no-op tracer)
+# ---------------------------------------------------------------------------
+tracing:
+  otlpEndpoint: "http://jaeger.mcp-presidio.svc.cluster.local:4317"

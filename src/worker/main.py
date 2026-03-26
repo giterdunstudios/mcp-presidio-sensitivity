@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -30,6 +30,9 @@ from analyzer import get_engine
 from minimizer import minimize
 from models import ErrorResponse, ScanRequest, ScanResponse
 from observability.logging import configure_logging
+from observability.tracing import configure_tracing, get_tracer
+from opentelemetry.propagate import extract as otel_extract
+from opentelemetry.trace import SpanKind, StatusCode
 
 # ---------------------------------------------------------------------------
 # Logging — must be configured before any logger.getLogger() calls fire
@@ -49,6 +52,10 @@ logger = logging.getLogger("presidio-worker")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    configure_tracing(
+        service_name="presidio-worker",
+        service_version=config.SERVICE_VERSION,
+    )
     logger.info("Pre-warming Presidio AnalyzerEngine")
     get_engine(min_score_threshold=config.MIN_SCORE_THRESHOLD)
     logger.info("Worker startup complete")
@@ -97,6 +104,22 @@ async def scan(request: Request) -> JSONResponse:
     """
     scan_id = uuid.uuid4()
 
+    # Extract W3C traceparent from MCP server to continue the distributed trace
+    try:
+        _trace_ctx = otel_extract(dict(request.headers))
+    except Exception:
+        _trace_ctx = None
+
+    with get_tracer().start_as_current_span(
+        "worker.scan",
+        context=_trace_ctx,
+        kind=SpanKind.SERVER,
+    ) as span:
+        span.set_attribute("scan_id", str(scan_id))
+        return await _scan_inner(request, scan_id, span)
+
+
+async def _scan_inner(request: Request, scan_id: uuid.UUID, span: Any) -> JSONResponse:
     # ------------------------------------------------------------------
     # Guard 1 — content-type allowlist (checked before body is read)
     # ------------------------------------------------------------------
@@ -105,6 +128,7 @@ async def scan(request: Request) -> JSONResponse:
     declared_type = raw_content_type.split(";")[0].strip().lower()
 
     if declared_type not in config.SUPPORTED_CONTENT_TYPES:
+        span.set_status(StatusCode.ERROR, "UNSUPPORTED_CONTENT_TYPE")
         logger.warning(
             "scan rejected: unsupported content-type",
             extra={"scan_id": str(scan_id), "content_type": declared_type},
@@ -125,6 +149,7 @@ async def scan(request: Request) -> JSONResponse:
     body_bytes = await request.body()
 
     if len(body_bytes) > config.MAX_PAYLOAD_BYTES:
+        span.set_status(StatusCode.ERROR, "PAYLOAD_TOO_LARGE")
         logger.warning(
             "scan rejected: payload too large",
             extra={"scan_id": str(scan_id), "size_bytes": len(body_bytes)},
@@ -145,6 +170,7 @@ async def scan(request: Request) -> JSONResponse:
     try:
         scan_request = ScanRequest.model_validate_json(body_bytes)
     except (ValidationError, Exception):
+        span.set_status(StatusCode.ERROR, "INVALID_REQUEST_SCHEMA")
         # Do not include body_bytes or any parsed fragment in the log message.
         logger.warning("scan rejected: invalid request schema", extra={"scan_id": str(scan_id)})
         return JSONResponse(
@@ -164,6 +190,7 @@ async def scan(request: Request) -> JSONResponse:
     # Guard 4 — content-type field in body must match header
     # ------------------------------------------------------------------
     if scan_request.content_type not in config.SUPPORTED_CONTENT_TYPES:
+        span.set_status(StatusCode.ERROR, "UNSUPPORTED_CONTENT_TYPE")
         logger.warning(
             "scan rejected: unsupported content_type field",
             extra={"scan_id": str(scan_id), "content_type": scan_request.content_type},
@@ -186,13 +213,15 @@ async def scan(request: Request) -> JSONResponse:
         "scan started",
         extra={"scan_id": str(scan_id), "workflow_id": workflow_id or "", "trace_id": workflow_id or str(scan_id)},
     )
+    language = scan_request.language or config.DEFAULT_LANGUAGE
     try:
         engine = get_engine(min_score_threshold=config.MIN_SCORE_THRESHOLD)
-        findings = engine.analyze(
-            text=scan_request.content,
-            language=scan_request.language or config.DEFAULT_LANGUAGE,
-        )
+        with get_tracer().start_as_current_span("presidio.analyze") as analyze_span:
+            # SECURITY: language code is safe metadata; content is never an attribute
+            analyze_span.set_attribute("language", language)
+            findings = engine.analyze(text=scan_request.content, language=language)
     except Exception:
+        span.set_status(StatusCode.ERROR, "SCAN_FAILED")
         # Exception message must not include scan_request.content.
         logger.exception(
             "scan failed: analysis engine error (payload content suppressed)",
@@ -220,6 +249,10 @@ async def scan(request: Request) -> JSONResponse:
         policy_profile=config.POLICY_PROFILE,
         scan_id=scan_id,
     )
+
+    span.set_attribute("decision", result.decision)
+    span.set_attribute("max_severity_band", result.max_severity_band)
+    span.set_attribute("findings_count", result.confidence_summary.findings_count)
 
     logger.info(
         "scan completed",

@@ -17,3 +17,4 @@ data:
   PORT: {{ .Values.config.port | quote }}
   SERVICE_VERSION: {{ .Chart.AppVersion | quote }}
   ENVIRONMENT: {{ .Values.environment | default "production" | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.tracing.otlpEndpoint | quote }}

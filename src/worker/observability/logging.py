@@ -72,6 +72,9 @@ class JsonFormatter(logging.Formatter):
             "service_name",
             "service_version",
             "environment",
+            # injected by OTel block below — handled explicitly, not via extras loop
+            "trace_id",
+            "span_id",
         }
     )
 
@@ -88,11 +91,23 @@ class JsonFormatter(logging.Formatter):
             "message": record.message,
         }
 
-        if "trace_id" in record.__dict__:
+        # OTel trace context — injected if there is an active span.
+        # Takes precedence over any trace_id in record extras.
+        try:
+            from opentelemetry import trace as _otel_trace  # noqa: PLC0415
+            _span_ctx = _otel_trace.get_current_span().get_span_context()
+            if _span_ctx.is_valid:
+                doc["trace_id"] = format(_span_ctx.trace_id, "032x")
+                doc["span_id"] = format(_span_ctx.span_id, "016x")
+        except Exception:
+            pass
+
+        # Fallback: record-level trace_id when no OTel span is active
+        if "trace_id" not in doc and "trace_id" in record.__dict__:
             doc["trace_id"] = record.__dict__["trace_id"]
 
         for key, value in record.__dict__.items():
-            if key not in self._RESERVED and key != "trace_id":
+            if key not in self._RESERVED:
                 doc[key] = value
 
         if record.exc_info:
