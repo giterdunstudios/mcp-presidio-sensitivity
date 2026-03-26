@@ -131,11 +131,33 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Observability endpoints (Prometheus, Grafana)
+# ---------------------------------------------------------------------------
+header "Observability"
+
+# MCP server /metrics
+if curl -sf --max-time 5 http://localhost:8000/metrics 2>/dev/null | grep -q "mcp_build_info"; then
+  pass "MCP server /metrics       http://localhost:8000/metrics"
+else
+  fail "MCP server /metrics       not serving (check prometheus-client dep)"
+fi
+
+# Worker /metrics
+if curl -sf --max-time 5 http://localhost:8090/metrics 2>/dev/null | grep -q "worker_build_info"; then
+  pass "Worker /metrics           http://localhost:8090/metrics"
+else
+  fail "Worker /metrics           not serving (check prometheus-client dep)"
+fi
+
+# ---------------------------------------------------------------------------
 # Port mappings (informational)
 # ---------------------------------------------------------------------------
 header "Port mappings"
 warn "Keycloak:         http://localhost:8080"
 warn "Presidio worker:  http://localhost:8090"
 warn "MCP server:       http://localhost:8000"
+warn "Jaeger UI:        http://localhost:16686"
+warn "Prometheus:       http://localhost:9090"
+warn "Grafana:          http://localhost:3000"
 
 printf '\n'

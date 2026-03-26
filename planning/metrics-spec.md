@@ -280,7 +280,18 @@ Dashboard title: **MCP Presidio Sensitivity — Operations**
 | Findings Per Scan | Histogram | `sum(rate(worker_findings_per_scan_bucket[5m])) by (le)` | How many entities found per scan |
 | Guard Rejections | Time series | `sum by (error_code) (rate(worker_scan_rejections_total[5m]))` | Pre-analysis rejections by type |
 
-### Row 5 — Service Info (1 panel)
+### Row 5 — Traces (2 panels)
+
+| Panel | Type | Data source | Description |
+|---|---|---|---|
+| Recent Traces | Traces panel | Jaeger | Span waterfall for recent requests; filterable by `service.name` (`mcp-presidio-sensitivity` or `presidio-worker`). Shows full distributed trace with timing, span hierarchy, and attributes |
+| Service Map | Node Graph panel | Jaeger | Service dependency graph derived from trace data; shows MCP server → worker call relationship with edge latency |
+
+The Traces panel is Grafana's native visualization for Jaeger/Tempo data — it
+renders the same span waterfall as the Jaeger UI but inline in the dashboard.
+Clicking a trace ID expands to the full waterfall detail view.
+
+### Row 6 — Service Info (1 panel)
 
 | Panel | Type | Query | Description |
 |---|---|---|---|
@@ -290,11 +301,10 @@ Dashboard title: **MCP Presidio Sensitivity — Operations**
 
 ## Trace ↔ Metric Correlation
 
-Grafana supports jumping from a metric panel to Jaeger traces via **exemplars**.
-`prometheus-client` does not natively support exemplars, but Grafana's split view
-(metrics panel + Jaeger data source panel) provides manual correlation: find a
-latency spike in the Prometheus panel, note the time window, switch to the Jaeger
-panel filtered by `service.name` and that time range.
+Grafana's Traces panel (Row 5) provides direct trace visualization from the Jaeger
+data source. For metric → trace correlation, Grafana's split view allows navigating
+from a latency spike in a Prometheus panel to the Jaeger Traces panel filtered by
+the same time window.
 
 Full exemplar support (embedding `trace_id` on histogram observations) is a Phase 2
 enhancement that would require switching to OTel Metrics SDK with OTLP export to a

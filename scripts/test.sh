@@ -37,7 +37,7 @@ PACKAGES=(
   "pydantic==2.12.5"
   "uvicorn==0.42.0"
   "httpx==0.28.1"
-  "slowapi==0.1.9"
+  "prometheus-client==0.24.1"
   "pytest==9.0.2"
   "pytest-asyncio==1.3.0"
   "anyio==4.13.0"

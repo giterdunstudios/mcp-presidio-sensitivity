@@ -145,7 +145,23 @@ kubectl apply -f "$PROJECT_ROOT/infrastructure/keycloak-local.yaml"
 kubectl rollout status deployment/keycloak -n "$NAMESPACE" --timeout=300s
 
 # ---------------------------------------------------------------------------
-# 5. Load and deploy presidio-worker
+# 5. Deploy observability infrastructure (Jaeger, Prometheus, Grafana)
+# ---------------------------------------------------------------------------
+
+log "Deploying Jaeger..."
+kubectl apply -f "$PROJECT_ROOT/infrastructure/jaeger.yaml"
+kubectl rollout status deployment/jaeger -n "$NAMESPACE" --timeout=60s
+
+log "Deploying Prometheus..."
+kubectl apply -f "$PROJECT_ROOT/infrastructure/prometheus.yaml"
+kubectl rollout status deployment/prometheus -n "$NAMESPACE" --timeout=60s
+
+log "Deploying Grafana..."
+kubectl apply -f "$PROJECT_ROOT/infrastructure/grafana.yaml"
+kubectl rollout status deployment/grafana -n "$NAMESPACE" --timeout=60s
+
+# ---------------------------------------------------------------------------
+# 6. Load and deploy presidio-worker
 # ---------------------------------------------------------------------------
 
 log "Loading $WORKER_IMAGE into kind cluster..."
@@ -161,7 +177,7 @@ kubectl rollout restart deployment/presidio-worker -n "$NAMESPACE"
 kubectl rollout status deployment/presidio-worker -n "$NAMESPACE" --timeout=120s
 
 # ---------------------------------------------------------------------------
-# 6. Load and deploy mcp-presidio-sensitivity (if built)
+# 7. Load and deploy mcp-presidio-sensitivity (if built)
 # ---------------------------------------------------------------------------
 
 if sg docker -c "docker image inspect '$MCP_SERVER_IMAGE'" &>/dev/null; then
@@ -181,7 +197,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Smoke tests
+# 8. Smoke tests
 # ---------------------------------------------------------------------------
 
 log "Running smoke tests..."
@@ -216,5 +232,8 @@ log ""
 log "  Keycloak:         http://localhost:8080"
 log "  Presidio worker:  http://localhost:8090"
 log "  MCP server:       $MCP_STATUS"
+log "  Jaeger UI:        http://localhost:16686"
+log "  Prometheus:       http://localhost:9090"
+log "  Grafana:          http://localhost:3000"
 log ""
 log "Tear down with:  ./scripts/setup-local.sh --teardown"
