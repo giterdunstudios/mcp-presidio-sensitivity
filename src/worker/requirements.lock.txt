@@ -43,6 +43,10 @@ fastapi==0.135.2
     # via -r requirements.txt
 filelock==3.25.2
     # via tldextract
+googleapis-common-protos==1.73.0
+    # via opentelemetry-exporter-otlp-proto-grpc
+grpcio==1.78.0
+    # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.16.0
     # via
     #   httpcore
@@ -59,6 +63,8 @@ idna==3.11
     #   httpx
     #   requests
     #   tldextract
+importlib-metadata==8.7.1
+    # via opentelemetry-api
 jinja2==3.1.6
     # via spacy
 markdown-it-py==4.0.0
@@ -77,6 +83,26 @@ numpy==2.4.3
     #   blis
     #   spacy
     #   thinc
+opentelemetry-api==1.40.0
+    # via
+    #   -r requirements.txt
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-otlp-proto-common==1.40.0
+    # via opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-grpc==1.40.0
+    # via -r requirements.txt
+opentelemetry-proto==1.40.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-sdk==1.40.0
+    # via
+    #   -r requirements.txt
+    #   opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-semantic-conventions==0.61b0
+    # via opentelemetry-sdk
 packaging==26.0
     # via
     #   spacy
@@ -90,6 +116,12 @@ preshed==3.0.13
     #   thinc
 presidio-analyzer==2.2.362
     # via -r requirements.txt
+prometheus-client==0.24.1
+    # via -r requirements.txt
+protobuf==6.33.6
+    # via
+    #   googleapis-common-protos
+    #   opentelemetry-proto
 pydantic==2.12.5
     # via
     #   -r requirements.txt
@@ -152,6 +184,11 @@ typing-extensions==4.15.0
     # via
     #   anyio
     #   fastapi
+    #   grpcio
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   starlette
@@ -179,35 +216,6 @@ websockets==16.0
     # via uvicorn
 wrapt==2.1.2
     # via smart-open
-googleapis-common-protos==1.73.0
-    # via opentelemetry-exporter-otlp-proto-common
-grpcio==1.78.0
-    # via opentelemetry-exporter-otlp-proto-grpc
-importlib-metadata==8.7.1
-    # via opentelemetry-sdk
-opentelemetry-api==1.40.0
-    # via
-    #   -r requirements.txt
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-sdk
-opentelemetry-exporter-otlp-proto-common==1.40.0
-    # via opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.40.0
-    # via -r requirements.txt
-opentelemetry-proto==1.40.0
-    # via
-    #   opentelemetry-exporter-otlp-proto-common
-    #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.40.0
-    # via
-    #   -r requirements.txt
-    #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-semantic-conventions==0.61b0
-    # via opentelemetry-sdk
-protobuf==6.33.6
-    # via
-    #   googleapis-common-protos
-    #   opentelemetry-proto
 zipp==3.23.0
     # via importlib-metadata
 
