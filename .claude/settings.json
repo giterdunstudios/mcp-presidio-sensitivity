@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl:*)",
+      "Bash(helm:*)",
+      "Bash(docker:*)",
+      "Bash(kind:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git status:*)",
+      "Bash(git show:*)",
+      "Bash(git blame:*)",
+      "Bash(./scripts/:*)",
+      "Bash(bash scripts/:*)",
+      "Bash(bash -n:*)",
+      "Bash(python3:*)",
+      "Bash(pip:*)",
+      "Bash(pip3:*)",
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "Bash(sg docker:*)",
+      "Bash(jq:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(gh repo:*)",
+      "Bash(shellcheck:*)",
+      "Bash(./scripts/test.sh)",
+      "Bash(./scripts/status.sh)",
+      "Bash(./scripts/rebuild.sh)",
+      "Bash(./scripts/demo.sh:*)",
+      "Bash(./scripts/auth-test.sh)",
+      "Bash(./scripts/classify.sh:*)",
+      "Bash(./scripts/keycloak-admin.sh:*)"
+    ]
+  }
+}
