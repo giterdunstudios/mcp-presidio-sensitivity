@@ -50,8 +50,8 @@ it must be raised at the next council meeting per §5c.
 
 | ID | Item | Status | Owner role | Phase | Notes |
 |----|------|--------|-----------|-------|-------|
-| BP-006 | Test coverage audit: map 42 existing test cases to solution behaviours | `proposed` | Engineering Practices Lead + Technical Implementation Lead | Phase 1 exit prep | Identify untested behaviours before Phase 1 exit. Needs coordination (see workboard). |
-| BP-007 | Integration test for RFC 9728 discovery chain (not just unit) | `proposed` | Technical Implementation Lead | Phase 1 exit prep | `auth-test.sh` covers auth cases; no automated test for full discovery chain. |
+| BP-006 | Test coverage audit: map test cases to solution behaviours | `complete` | Engineering Practices Lead + Technical Implementation Lead | Phase 1 exit | 58 tests passing. test_main.py added: /health, RFC 9728 endpoint, classify tool handler (success + error), RequestContextMiddleware. Zero-coverage modules resolved. |
+| BP-007 | Integration test for RFC 9728 discovery chain | `complete` | Technical Implementation Lead | Phase 1 exit | test_main.py cases 2–6: all required RFC 9728 fields, ISSUER_URL in authorization_servers, scopes_supported, SERVER_RESOURCE_URL. Live chain covered by status.sh + auth-test.sh. |
 | BP-008 | Synthetic test corpus coverage gate: require corpus case for each new entity type added | `proposed` | Detection / Data Researcher (when active) | Phase 1+ | Coordinate with Engineering Practices Lead on acceptance threshold. |
 | BP-009 | Wave 3 regression validation (D1–D6) — k3d migration | `complete` | Technical Implementation Lead | Pre-Phase 2 gate | All 6 scripts green (2026-03-26). Pre-Phase 2 gate cleared. |
 
