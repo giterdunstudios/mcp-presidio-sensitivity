@@ -1,10 +1,14 @@
 # mcp-presidio-sensitivity — Dev Scripts
 
 These scripts are specific to this project. They have the k3d cluster name
-(`mcp-presidio`), namespace (`mcp-presidio`), image tags
-(`mcp-presidio-sensitivity:0.1.0`, `presidio-worker:0.1.0`), Keycloak realm
-(`mcp-local`), client credentials, and port mappings (`8000`, `8080`, `8090`)
-hardcoded. They are not generic utilities.
+(`mcp-presidio`), namespace (`mcp-presidio`), Keycloak realm (`mcp-local`),
+client credentials, and port mappings (`8000`, `8080`, `8090`) hardcoded.
+They are not generic utilities.
+
+Image tags are **not** hardcoded — `rebuild.sh` defaults to the short git SHA
+of HEAD (`IMAGE_TAG=$(git rev-parse --short HEAD)`), producing unique per-branch
+tags so parallel branch builds don't overwrite each other in the registry.
+Override with `IMAGE_TAG=my-tag ./scripts/rebuild.sh`.
 
 Each script has a detailed `When to use` block in its header.
 
@@ -180,6 +184,36 @@ allowed, MCP→internet denied, NetworkPolicy resource presence checks.
 
 ---
 
+## branch-test.sh
+Full branch validation suite — run before opening a PR or requesting a merge.
+Designed for agent and developer use. Runs all steps sequentially and reports
+a single pass/fail result.
+
+**When:** On any branch before merge. Agents should run this via
+`devtools-run.sh` so k3d/kubectl/helm are available without host installation.
+
+**Cluster coordination:** Steps 2–5 require the shared cluster. Only one
+branch should be deployed at a time. Unit tests (step 1) are isolated and
+safe to run in parallel on multiple branches.
+
+```bash
+# Standard (unit + rebuild + status + auth + networkpolicy)
+./scripts/devtools-run.sh ./scripts/branch-test.sh
+
+# Full (adds demo.sh a)
+./scripts/devtools-run.sh ./scripts/branch-test.sh --full
+```
+
+Steps:
+1. **Unit tests** — Docker only, no cluster. Fails fast if broken.
+2. **Rebuild** — builds images tagged with git SHA, deploys to cluster.
+3. **Status** — full stack health check.
+4. **Auth test** — 5-case enforcement matrix (includes 65s wait for case 5).
+5. **NetworkPolicy** — live enforcement validation.
+6. **Demo** (`--full` only) — end-to-end all cases.
+
+---
+
 ## Typical session workflow
 
 ```bash
@@ -198,4 +232,7 @@ allowed, MCP→internet denied, NetworkPolicy resource presence checks.
 ./scripts/auth-test.sh
 ./scripts/validate-networkpolicy.sh
 ./scripts/demo.sh a
+
+# 5. Branch validation before merge (agents: run via devtools-run.sh)
+./scripts/devtools-run.sh ./scripts/branch-test.sh
 ```

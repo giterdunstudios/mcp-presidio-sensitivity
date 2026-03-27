@@ -44,10 +44,18 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CLUSTER_NAME="mcp-presidio"
 NAMESPACE="mcp-presidio"
 REGISTRY_PUSH="localhost:5000"         # host-reachable push address; cluster pulls via k3d-mcp-registry:5000
-MCP_IMAGE="mcp-presidio-sensitivity:0.1.0"
-WORKER_IMAGE="presidio-worker:0.1.0"
-MCP_IMAGE_REMOTE="$REGISTRY_PUSH/mcp-presidio-sensitivity:0.1.0"
-WORKER_IMAGE_REMOTE="$REGISTRY_PUSH/presidio-worker:0.1.0"
+
+# IMAGE_TAG defaults to the short git SHA of HEAD so branch builds get unique
+# tags and don't overwrite each other in the registry. Override with:
+#   IMAGE_TAG=my-tag ./scripts/rebuild.sh
+# The tag is passed to Helm via --set image.tag so values.local.yaml does not
+# need to be modified per branch.
+IMAGE_TAG="${IMAGE_TAG:-$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "dev")}"
+
+MCP_IMAGE="mcp-presidio-sensitivity:${IMAGE_TAG}"
+WORKER_IMAGE="presidio-worker:${IMAGE_TAG}"
+MCP_IMAGE_REMOTE="$REGISTRY_PUSH/mcp-presidio-sensitivity:${IMAGE_TAG}"
+WORKER_IMAGE_REMOTE="$REGISTRY_PUSH/presidio-worker:${IMAGE_TAG}"
 
 log()  { echo "[rebuild] $*"; }
 fail() { echo "[rebuild] ERROR: $*" >&2; exit 1; }
@@ -127,25 +135,29 @@ fi
 
 # ---------------------------------------------------------------------------
 # Helm upgrade — apply config changes (values.yaml, templates) alongside
-# the new image. Runs before the rolling restart so the pod spec is current
-# when the restart fires. The image tag is static (0.1.0) so helm upgrade
-# alone does not trigger a rollout; kubectl rollout restart handles that.
+# the new image. --set image.tag overrides the tag in values.local.yaml so
+# each branch deploys its own SHA-tagged image without modifying any file.
+# When the tag changes, Helm detects the pod spec diff and the rollout
+# restart below picks it up. When only config changes (same SHA), the
+# rollout restart alone moves pods onto the new config.
 # ---------------------------------------------------------------------------
 
 if $BUILD_MCP; then
-  log "Helm upgrade: mcp-presidio-sensitivity..."
+  log "Helm upgrade: mcp-presidio-sensitivity (image.tag=${IMAGE_TAG})..."
   helm upgrade --install mcp-presidio-sensitivity "$PROJECT_ROOT/helm/mcp-server" \
     -f "$PROJECT_ROOT/helm/mcp-server/values.yaml" \
     -f "$PROJECT_ROOT/helm/mcp-server/values.local.yaml" \
+    --set image.tag="${IMAGE_TAG}" \
     --namespace "$NAMESPACE" \
     --timeout 120s
 fi
 
 if $BUILD_WORKER; then
-  log "Helm upgrade: presidio-worker..."
+  log "Helm upgrade: presidio-worker (image.tag=${IMAGE_TAG})..."
   helm upgrade --install presidio-worker "$PROJECT_ROOT/helm/presidio-worker" \
     -f "$PROJECT_ROOT/helm/presidio-worker/values.yaml" \
     -f "$PROJECT_ROOT/helm/presidio-worker/values.local.yaml" \
+    --set image.tag="${IMAGE_TAG}" \
     --namespace "$NAMESPACE" \
     --timeout 180s
 fi
