@@ -7,6 +7,31 @@ future decision would prevent properly implementing a deferred capability.
 
 ---
 
+## DEC-007 — Temporal coupling analysis: commits as analysis unit, advisory-only agent authority
+
+**Date:** 2026-03-27
+**Status:** Accepted — implement before wave work restarts
+**Raised by:** Engineering Practices Lead
+**Decided by:** Council (all four personas) — unanimous
+
+### Decision
+Adopt temporal coupling analysis as a ways-of-working practice for wave parallelization planning. Key decisions made:
+
+1. **Analysis unit: git commits** (not PRs). No GitHub API dependency. Revisit PR-level only in Phase 3 if commit-level produces noisy results.
+2. **Planning agent authority: advisory only — permanently.** The agent produces text recommendations; a human approves before any planning file is modified. This is a hard constraint, not an early-stage default.
+3. **Mode transition threshold: 30%** of relevant file pairs in `established` or `mature` confidence tier triggers empirical-dominant mode. Below 30%, prior-dominant (static coupling map leads).
+4. **Outlier filter: `--max-files-per-commit 15`** (default). Commits touching more than 15 files are excluded from analysis as mass-update outliers; count tracked in `_meta.excluded_commit_count`.
+5. **Default excluded paths:** `planning/**`, `deliverables/**`, `.claude/**`.
+6. **`coupling-data.json` is internal only** — file path surface is reconnaissance-sensitive; do not publish in a public repository without security review.
+
+### Rationale
+See `planning/temporal-coupling-spec.md` for full engineering detail. The core rationale: static coupling maps describe architectural intent; temporal coupling describes empirical reality. Both are needed. The static map serves as the prior until commit history reaches statistical significance (`established` tier = 20+ observations per file).
+
+### Critical flag trigger
+Any change that gives the planning agent write authority over planning files (wave plan, decision log, workboard) without explicit human approval in the loop violates this decision and must be escalated immediately.
+
+---
+
 ## DEC-006 — Default template: `llm_default` replaces `general_pii` as the MCP tool default
 
 **Date:** 2026-03-26

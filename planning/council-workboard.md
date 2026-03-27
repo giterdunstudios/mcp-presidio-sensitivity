@@ -76,7 +76,7 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 ## Engineering Practices Lead
 
 ### Active
-- None
+- BP-027: Temporal coupling analysis Phase 1 — `coupling-analysis.sh` + `coupling-data.json` (urgent, pre-wave)
 
 ### Queued
 - Dev/prod parity baseline (BP-013) — document delta between k3d local and Phase 2 target
