@@ -4,41 +4,47 @@ Cross-role visibility into active work, queued items, and coordination requests.
 Read this file at the start of every session before doing any work.
 Maintained per §5b of `role-instructions/ways-of-working.md`.
 
-**Last updated:** 2026-03-27 (tech debt audit backlog logged — see planning/tech-debt-backlog.md)
+**Last updated:** 2026-03-27 — Phase 1 EXIT COMPLETE
+
+---
+
+## Phase 1 Status: COMPLETE ✅
+
+**Signed off:** 2026-03-27
+**Gate run:** `branch-test.sh` — 58/58 unit tests, rebuild, status, auth (5/5), NetworkPolicy (cases 11–20)
+**Signed by:** Security/Privacy Lead, Engineering Practices Lead, Product/Scope Lead
 
 ---
 
 ## Product / Scope Lead
 
 ### Active
-- Phase 1 exit sign-off — pending Security/Privacy Lead and Engineering Practices Lead sign-off gates
+- Phase 2 scope definition — now unblocked
 
 ### Queued
-- Phase 2 scope definition — pre-Phase 2 gate cleared; unblocked pending Phase 1 exit sign-off
-- Vertical templates implementation phase scheduling (tech-debt-backlog.md #18) — research complete 2026-03-26; planning task only
-- SLO definition (tech-debt-backlog.md #19) — p99 latency + error rate targets; planning task only
+- Vertical templates implementation phase scheduling — research complete 2026-03-26; needs phase slot
+- SLO definition — p99 latency + error rate targets; needs phase slot
 
 ### Needs coordination
-- Phase 1 exit criteria review — requires: Security/Privacy Lead, Engineering Practices Lead; timing: now unblocked (Wave 3 passed)
+- Phase 2 scope definition — requires: all roles; timing: next session
 
 ---
 
 ## Security / Privacy Lead
 
 ### Active
-- SBOM (`bom.json`) ownership — reviewing current manual version; defining acceptance criteria for phase exit sign-off
+- None
 
 ### Queued
-- Phase 1 exit sign-off — requires: Engineering Practices Lead to confirm testing gate passed
-- SBOM automation review (BP-001: cdxgen) — Security/Privacy Lead must approve toolchain before it replaces the manual SBOM
-- Phase 2 auth offload design review (DEC-003: Istio JWT validation) — blocked until pre-Phase 2 gate clears
-- SBOM refresh post-Phase 2 (BP-018 / tech-debt-backlog.md #4) — auth/ deleted, Istio CRDs added; current SBOM stale
-- Hardcoded credential pre-prod gate (BP-020 / tech-debt-backlog.md #6) — CLIENT_SECRET / ADMIN_PASSWORD enforcement gate
-- Image vulnerability scanning (BP-024 / tech-debt-backlog.md #20) — Trivy/Grype in rebuild.sh; no CVE check for PII images
-- Image signing (BP-025 / tech-debt-backlog.md #28) — Cosign; images unsigned
+- SBOM automation review (BP-001: cdxgen) — approve toolchain before implementation
+- Phase 2 auth offload design review (DEC-003: Istio JWT validation)
+- SBOM refresh post-Phase 2 — auth/ deleted, Istio CRDs added; current SBOM will be stale
+- Hardcoded credential pre-prod gate (BP-020) — CLIENT_SECRET / ADMIN_PASSWORD enforcement
+- Image vulnerability scanning (BP-024) — Trivy/Grype in rebuild.sh
+- Image signing (BP-025) — Cosign; images unsigned
 
 ### Needs coordination
-- SBOM automation acceptance — requires: Technical Implementation Lead (cdxgen integration); timing: before Phase 1 exit sign-off
+- SBOM automation (BP-001) — requires: Technical Implementation Lead (cdxgen); timing: pre-Phase 2
 
 ---
 
@@ -49,49 +55,49 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 
 ### Queued
 - Phase 2 design: Istio install into k3d cluster (DEC-003, DEC-004 Phase E)
-- Worker pod restart root cause investigation (tech-debt-backlog.md #3) — 9 restarts observed; OOMKill? Probe misconfiguration?
-- requirements.lock.txt sync check (BP-019 / tech-debt-backlog.md #5) — verify lock matches requirements.txt in test.sh or rebuild.sh
-- BP-007: RFC 9728 discovery chain integration test (tech-debt-backlog.md #7)
-- BP-011: Verify teardown + re-run clean (tech-debt-backlog.md #9)
-- Helm test hooks (BP-022 / tech-debt-backlog.md #14)
-- Prometheus → Worker direct scraping (tech-debt-backlog.md #26) — NetworkPolicy exemption rule
+- Worker pod restart root cause investigation — OOMKill? Probe misconfiguration?
+- requirements.lock.txt sync check (BP-019) — verify lock matches requirements.txt
+- BP-011: Verify teardown + re-run clean
+- Helm test hooks (BP-022)
+- Prometheus → Worker direct scraping — NetworkPolicy exemption rule
 
 ### Completed this session
-- Wave 3 validation (D1–D6): all 6 scripts green ✅
-  - Flannel NetworkPolicy enforcement confirmed — cases 13+14 now live
-  - MCP server ingress rule added for external clients
-  - `devtools.Dockerfile` + `devtools-run.sh` added
-  - `serverResourceUrl` added to `values.local.yaml`
+- Wave 3 validation (D1–D6) ✅
+- test_main.py — 16-case suite (BP-006, BP-007) ✅
+- classify.sh worker check fix ✅
+- status.sh k3d fallback + observability URLs ✅
 
 ### Needs coordination
-- Cilium CNI (Phase E, optional): Platform / Cluster Infrastructure Lead deactivated; timing: Phase 2 start, coordinate with Security/Privacy Lead
+- Cilium CNI (Phase E): timing: Phase 2 start, coordinate with Security/Privacy Lead
+- SBOM automation (BP-001): Technical Implementation Lead implements cdxgen once Security/Privacy Lead approves
 
 ---
 
 ## Engineering Practices Lead
 
 ### Active
-- Monitoring team workflow health across all roles post-council ratification
+- None
 
 ### Queued
-- Test coverage audit: map current 42 test cases to solution behaviours; identify gaps (BP-006 / tech-debt-backlog.md #10)
-- Dev/prod parity baseline: document current delta between k3d local and Phase 2 target topology (BP-013 / tech-debt-backlog.md #11)
-- Onboarding review: validate that a new contributor can reach a working stack using only `CLAUDE.md` and `scripts/README.md` (tech-debt-backlog.md #13)
-- Disaster recovery runbook for local dev stack (BP-010 / tech-debt-backlog.md #8)
-- BP-005: pin exact k3d version in CLAUDE.md — confirmed 5.7.4 (tech-debt-backlog.md #1 note)
-- BP-012: k3d version floor check in setup-local.sh (tech-debt-backlog.md #10)
-- Registry GC script (BP-016 / tech-debt-backlog.md #1)
-- Registry process documentation in scripts/README.md (BP-017 / tech-debt-backlog.md #2)
-- Registry authentication gap — document as known gap (BP-023 / tech-debt-backlog.md #21)
-- Helm chart version bump policy (BP-021 / tech-debt-backlog.md #13)
+- Dev/prod parity baseline (BP-013) — document delta between k3d local and Phase 2 target
+- Onboarding review — validate new contributor path via CLAUDE.md + scripts/README.md
+- Disaster recovery runbook (BP-010)
+- BP-012: k3d version floor check in setup-local.sh
+- Registry GC script (BP-016)
+- Registry process documentation in scripts/README.md (BP-017)
+- Registry authentication gap — document as known gap (BP-023)
+- Helm chart version bump policy (BP-021)
 
 ### Completed this session
-- BP-009 (Wave 3 regression D1–D6): complete ✅
-- BP-015 (Flannel NetworkPolicy enforcement): complete ✅ — Flannel in k3s enforces NetworkPolicy ingress; cases 13+14 now active in `validate-networkpolicy.sh`
+- BP-002/003: SBOM valid JSON, fresh UUID ✅
+- BP-005: k3d version pinned in CLAUDE.md ✅
+- BP-006: Test coverage audit — 58 tests, main.py covered ✅
+- BP-007: RFC 9728 unit tests ✅
+- BP-009: Wave 3 regression ✅
+- BP-015: Flannel NetworkPolicy enforcement confirmed ✅
 
 ### Needs coordination
-- Test coverage gap review — requires: Technical Implementation Lead; timing: Phase 1 exit prep
-- Dev/prod parity standard definition — requires: Technical Implementation Lead, Product/Scope Lead; timing: before Phase 2 scope is opened
+- Dev/prod parity standard — requires: Technical Implementation Lead, Product/Scope Lead; timing: before Phase 2 scope opens
 
 ---
 
@@ -101,7 +107,7 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 - Inactive (surge role — not currently triggered)
 
 ### Queued
-- Test corpus coverage standard: when activated, coordinate with Engineering Practices Lead on synthetic test corpus quality gates
+- Test corpus coverage standard: coordinate with Engineering Practices Lead on synthetic test corpus quality gates when activated
 
 ---
 
@@ -109,12 +115,14 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 
 ### Status: DEACTIVATED (2026-03-26)
 
-Wave 3 validation (D1–D6) passed. k3d migration complete. Burst role deactivated per handoff contract in `planning/k3d-migration-spec.md`.
+Wave 3 validation (D1–D6) passed. k3d migration complete.
 
 ### Completed
 - Wave 1: k3d-config.yaml, setup-local.sh, registry workflow
 - Wave 2: rebuild.sh, values.local.yaml (pullPolicy + registry prefix)
 - Wave 3: status.sh, scripts/README.md, kind-config.yaml removed; full D1–D6 regression passed
 
-### Needs coordination
-- None — deactivated
+---
+
+## Needs coordination
+- None currently blocking Phase 2 start
