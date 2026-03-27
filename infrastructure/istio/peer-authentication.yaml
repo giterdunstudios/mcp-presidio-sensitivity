@@ -1,0 +1,50 @@
+# PeerAuthentication — enforce STRICT mTLS within mcp-presidio namespace
+#
+# Resolves DEC-001: MCP server → Presidio worker communication upgrades from
+# plain HTTP to mutual TLS. istiod acts as the CA; SPIFFE identity certificates
+# are provisioned and rotated automatically by the Envoy sidecar — no cert
+# files, no cert-manager, no application code changes required.
+#
+# PERMISSIVE (Istio default): sidecars accept both plain HTTP and mTLS.
+# STRICT: sidecars reject plain HTTP — all intra-namespace traffic must be mTLS.
+#
+# Two policies:
+#   1. default (namespace-wide) — STRICT for all mesh traffic
+#   2. mcp-server-external-port — port-level PERMISSIVE on port 8000 only,
+#      so external clients (no sidecar, no client cert) can still reach the
+#      MCP server via NodePort. Mesh traffic on port 8000 auto-upgrades to
+#      mTLS regardless. The worker has no external port and is STRICT throughout.
+#
+# Long-term: deploy an Istio IngressGateway in front of the MCP server.
+# The Gateway terminates external connections and forwards to pods over mTLS,
+# removing the need for the port-level PERMISSIVE exception.
+#
+# SPIFFE identities assigned by istiod:
+#   spiffe://cluster.local/ns/mcp-presidio/sa/mcp-presidio-sensitivity
+#   spiffe://cluster.local/ns/mcp-presidio/sa/presidio-worker
+#
+# Production note: replace istiod's self-signed root CA with an external CA
+# (cert-manager + enterprise PKI or cloud provider CA) before going to prod.
+# The PeerAuthentication policies themselves do not change.
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: mcp-presidio
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: mcp-server-external-port
+  namespace: mcp-presidio
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-presidio-sensitivity
+  portLevelMtls:
+    8000:
+      mode: PERMISSIVE
