@@ -214,6 +214,30 @@ Steps:
 
 ---
 
+## devtools-run.sh
+Runs any script or command inside the pinned devtools container, which provides
+k3d, kubectl, helm, and docker CLI without requiring host installation. All tools
+are pinned to the same versions used in development.
+
+**When:** Any time k3d, kubectl, or helm are not available on the host PATH, or
+when you want a fully reproducible toolchain environment. Required wrapper for
+`branch-test.sh` and `coupling-analysis.sh` when those tools are not on the host.
+
+```bash
+./scripts/devtools-run.sh ./scripts/setup-local.sh
+./scripts/devtools-run.sh ./scripts/branch-test.sh
+./scripts/devtools-run.sh ./scripts/branch-test.sh --full
+./scripts/devtools-run.sh kubectl get pods -n mcp-presidio
+./scripts/devtools-run.sh helm list -n mcp-presidio
+./scripts/devtools-run.sh k3d cluster list
+```
+
+The devtools image (`mcp-presidio-devtools:latest`) is built automatically on first
+run from `infrastructure/devtools.Dockerfile`. To rebuild after a Dockerfile change:
+`docker rmi mcp-presidio-devtools:latest` then run any `devtools-run.sh` command.
+
+---
+
 ## coupling-analysis.sh
 Mines git commit history to compute co-change frequency between solution artifacts.
 Outputs `planning/coupling-data.json` — the empirical coupling matrix used by the
@@ -232,6 +256,70 @@ only — feature branch history produces misleading pair counts.
 
 See `planning/temporal-coupling-spec.md` for the full coupling tier and confidence
 tier definitions, and the planning agent operating model.
+
+---
+
+## registry-gc.sh
+Runs garbage collection on the local k3d registry (`k3d-mcp-registry`) to reclaim
+disk space occupied by unreferenced image layers.
+
+**When:**
+- `docker exec k3d-mcp-registry du -sh /var/lib/registry` reports > ~5GB
+- After 10 or more `rebuild.sh` runs on an active branch (each run pushes a new
+  SHA-tagged image; old layers accumulate until GC runs)
+- Before a WSL2 session where disk headroom is tight
+
+GC is a **manual developer responsibility** — it is not automated, to avoid
+interrupting concurrent builds (see safety note in the script header).
+
+```bash
+./scripts/registry-gc.sh               # live GC — removes dangling layers
+./scripts/registry-gc.sh --dry-run     # show what would be removed; no changes made
+./scripts/registry-gc.sh --prune-old-tags  # also delete old SHA-tagged manifests
+```
+
+**Safety:** Default GC (no flags) is safe when no `rebuild.sh` is running concurrently.
+`--prune-old-tags` is destructive — requires operator confirmation that all running
+pods reference the current SHA before proceeding (see warning in the script).
+
+---
+
+## Registry management
+
+The local k3d registry (`k3d-mcp-registry`, push address `localhost:5000`) stores
+all images built by `rebuild.sh`. It has **no authentication** — this is acceptable
+for a local dev registry but is a known gap tracked as issue #21.
+
+### How tags accumulate
+
+Each `rebuild.sh` run tags the built image with the short git SHA of HEAD
+(`git rev-parse --short HEAD`). On an active branch with 10+ rebuilds, the registry
+accumulates 10+ tags per image name. Default GC removes unreferenced blob layers but
+does NOT remove old SHA-tagged manifests — those are still "tagged" as far as the
+registry is concerned. The `--prune-old-tags` flag is required to reclaim that space.
+
+### When to run GC
+
+Check registry disk usage:
+```bash
+docker exec k3d-mcp-registry du -sh /var/lib/registry
+```
+
+Run GC when:
+- Usage exceeds ~5GB, or
+- After 10 or more `rebuild.sh` runs on an active branch
+
+### GC is a manual developer responsibility
+
+GC is not automated. The sweep phase can delete blobs referenced by an in-flight
+`docker push` before its manifest is stored. Always ensure no `rebuild.sh` is
+running before executing GC.
+
+```bash
+./scripts/registry-gc.sh --dry-run   # inspect what would be removed first
+./scripts/registry-gc.sh             # remove dangling layers (safe, preserves SHA tags)
+./scripts/registry-gc.sh --prune-old-tags  # also remove old SHA manifests (see warning)
+```
 
 ---
 
