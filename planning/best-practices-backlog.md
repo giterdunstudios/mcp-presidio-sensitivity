@@ -28,7 +28,7 @@ it must be raised at the next council meeting per §5c.
 
 | ID | Item | Status | Owner role | Phase | Notes |
 |----|------|--------|-----------|-------|-------|
-| BP-001 | SBOM automated regeneration via cdxgen in `rebuild.sh` | `proposed` | Security/Privacy Lead (approves); Technical Implementation Lead (implements) | Pre-Phase 2 | See automation plan below. Security/Privacy Lead must approve toolchain before implementation. |
+| BP-001 | SBOM automated regeneration via cdxgen in `rebuild.sh` | `proposed` | Security/Privacy Lead (approves); Technical Implementation Lead (implements) | Pre-Phase 2 | See automation plan below. **Gate:** Security/Privacy Lead commits this row's status to `approved-for-implementation` — that commit is the signal for Tech Lead to start. Concerns → council review before status changes. |
 | BP-002 | SBOM acceptance criteria for Phase 1 exit sign-off | `complete` | Security/Privacy Lead | Phase 1 exit | `bom.json` is valid JSON, fresh UUID serialNumber, all components and vulnerability present. Accepted for Phase 1. Automation is pre-Phase 2 work. |
 | BP-003 | `bom.json` serialNumber should be generated (not static) | `complete` | Security/Privacy Lead | Phase 1 exit | Resolved 2026-03-26: fresh UUID generated. Full automation (BP-001) will regenerate on every build. |
 | BP-004 | Verify all roles have read `ways-of-working.md` v1.1 | `complete` | Engineering Practices Lead | 2026-03-26 | Ratification session served as read-through. |
