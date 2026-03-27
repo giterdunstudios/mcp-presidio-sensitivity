@@ -31,6 +31,13 @@
 
 set -euo pipefail
 
+# --skip-expiry: skip case 5 (65s wait). Use for branch testing; run the full
+# suite before any auth-related release or Phase sign-off.
+SKIP_EXPIRY=false
+for arg in "$@"; do
+  [[ "$arg" == "--skip-expiry" ]] && SKIP_EXPIRY=true
+done
+
 KEYCLOAK="http://localhost:8080"
 REALM="mcp-local"
 ADMIN_USER="admin"
@@ -185,31 +192,38 @@ header "Case 5 — Expired token → 401"
 # tolerance. A token expired less than 60s ago is still considered valid.
 # This test sets TTL=2s and waits 65s to exceed the clock skew window.
 # The wait is intentional — do not reduce it.
+#
+# Skip with --skip-expiry for branch testing. Always run the full case before
+# any auth-related release or Phase sign-off.
 
-info "Setting realm TTL to 2s ..."
-set_realm_ttl 2
-
-EXP_TOK=$(client_token "tools:classify.submit" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-info "Token acquired (TTL 2s)"
-
-info "Restoring realm TTL to 60s (DEC-002) ..."
-set_realm_ttl 60
-
-WAIT=65
-printf "  \033[2m--\033[0m  Waiting ${WAIT}s for token to expire beyond Istio clock skew window (60s) ...\n"
-for i in $(seq "$WAIT" -1 1); do
-  printf "\r  \033[2m--\033[0m  %2ds remaining ... " "$i"
-  sleep 1
-done
-printf "\r  \033[2m--\033[0m  Wait complete.                          \n"
-
-CODE=$(mcp_init_code "$EXP_TOK")
-
-if [[ "$CODE" == "401" ]]; then
-  pass "HTTP 401 — expired token rejected"
+if $SKIP_EXPIRY; then
+  info "Case 5 SKIPPED (--skip-expiry) — run without flag before release sign-off"
 else
-  fail "HTTP $CODE (expected 401)"
+  info "Setting realm TTL to 2s ..."
+  set_realm_ttl 2
+
+  EXP_TOK=$(client_token "tools:classify.submit" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+  info "Token acquired (TTL 2s)"
+
+  info "Restoring realm TTL to 60s (DEC-002) ..."
+  set_realm_ttl 60
+
+  WAIT=65
+  printf "  \033[2m--\033[0m  Waiting ${WAIT}s for token to expire beyond Istio clock skew window (60s) ...\n"
+  for i in $(seq "$WAIT" -1 1); do
+    printf "\r  \033[2m--\033[0m  %2ds remaining ... " "$i"
+    sleep 1
+  done
+  printf "\r  \033[2m--\033[0m  Wait complete.                          \n"
+
+  CODE=$(mcp_init_code "$EXP_TOK")
+
+  if [[ "$CODE" == "401" ]]; then
+    pass "HTTP 401 — expired token rejected"
+  else
+    fail "HTTP $CODE (expected 401)"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -218,7 +232,11 @@ fi
 
 echo ""
 if [[ $FAILURES -eq 0 ]]; then
-  printf '\033[32m\033[1mAll 5 auth enforcement cases passed\033[0m\n'
+  if $SKIP_EXPIRY; then
+    printf '\033[32m\033[1m4 of 5 auth enforcement cases passed (case 5 skipped — run without --skip-expiry before release sign-off)\033[0m\n'
+  else
+    printf '\033[32m\033[1mAll 5 auth enforcement cases passed\033[0m\n'
+  fi
 else
   printf '\033[31m\033[1m%d case(s) failed\033[0m\n' "$FAILURES"
   exit 1

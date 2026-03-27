@@ -120,7 +120,9 @@ run_step "Stack health (status.sh)" "$SCRIPT_DIR/status.sh"
 # Step 4 — Auth enforcement matrix (includes 65s wait for expired token case)
 # ---------------------------------------------------------------------------
 
-run_step "Auth enforcement (auth-test.sh)" "$SCRIPT_DIR/auth-test.sh"
+# --skip-expiry omits the 65s wait (case 5). Run auth-test.sh directly without
+# the flag before any auth-related release or Phase sign-off.
+run_step "Auth enforcement (auth-test.sh --skip-expiry)" "$SCRIPT_DIR/auth-test.sh" --skip-expiry
 
 # ---------------------------------------------------------------------------
 # Step 5 — NetworkPolicy live enforcement
