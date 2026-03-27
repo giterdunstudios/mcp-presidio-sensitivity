@@ -143,17 +143,18 @@ anonymizer_config:      # Optional — for presidio-anonymizer
 4. **Template versioning** — slug + version recorded in audit trail per scan
 
 **Proposed initial template set:**
-| Slug | Standard | Priority |
-|---|---|---|
-| `general_pii` | Baseline — all Presidio built-ins | High |
-| `pci_dss` | PCI DSS v4 | High |
-| `hipaa_core` | HIPAA Safe Harbor 18 IDs | High |
-| `hipaa_extended` | HIPAA + clinical context | Medium |
-| `gdpr_core` | GDPR Art. 4 personal data | High |
-| `gdpr_special` | GDPR Art. 9 — NLP only | Low (Phase 3+) |
-| `glba` | U.S. GLBA | Medium |
-| `ferpa` | U.S. FERPA | Low |
-| `soc2_cloud` | SOC 2 + secrets/credentials | Medium (pending OD-1) |
+| Slug | Standard | Default? | Priority | Notes |
+|---|---|---|---|---|
+| `llm_default` | `general_pii` + AWS/GitHub/GCP prefix-anchored secrets | **Yes — MCP tool default** | High | Pattern-only, deterministic latency. DEC-006. |
+| `general_pii` | Presidio built-ins baseline only | No | High | Pure Presidio defaults. No custom recognizers. |
+| `pci_dss` | PCI DSS v4 | No | High | |
+| `hipaa_core` | HIPAA Safe Harbor 18 IDs | No | High | |
+| `hipaa_extended` | HIPAA + clinical context | No | Medium | |
+| `gdpr_core` | GDPR Art. 4 personal data | No | High | |
+| `gdpr_special` | GDPR Art. 9 — NLP only | No | Low (Phase 3+) | Not pattern-detectable; batch mode only |
+| `glba` | U.S. GLBA | No | Medium | |
+| `ferpa` | U.S. FERPA | No | Low | |
+| `soc2_cloud` | SOC 2 + detect-secrets entropy scanning | No | Medium | Includes subprocess; not for real-time hot path |
 
 **Proposed MCP tool API:**
 ```python

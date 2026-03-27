@@ -7,6 +7,41 @@ future decision would prevent properly implementing a deferred capability.
 
 ---
 
+## DEC-006 — Default template: `llm_default` replaces `general_pii` as the MCP tool default
+
+**Date:** 2026-03-26
+**Status:** Accepted — implement before template registry build begins
+**Raised by:** Product / Scope Lead
+**Decided by:** Council (all three personas) — unanimous
+
+### Decision
+The default template for `classify_payload_sensitivity` when no template is specified is `llm_default`, not `general_pii`.
+
+- **`general_pii`** — pure Presidio built-ins baseline (~40-45 entities). No custom recognizers. Unchanged.
+- **`llm_default`** — composed default: `general_pii` entities plus three prefix-anchored secret patterns: AWS (`AKIA/ASIA/AROA/AIDA`), GitHub (`gh[pousr]_`), GCP (`AIza`). Pattern-only — no entropy scanning, no subprocess. Deterministic latency.
+
+Template precedence: explicit `entities` override → named `template` → `llm_default`.
+
+### Rationale
+The use case is vetting arbitrary LLM payloads — the calling agent does not know the domain upfront. Vertical templates (`hipaa_core`, `pci_dss`) are opt-in overlays for domain-aware callers, not the default. The one gap in `general_pii` that is specific to LLM payloads is credentials: users paste code and config snippets into prompts. The three prefix-anchored patterns are near-zero false positive and belong in the default without requiring the caller to know they are needed.
+
+`soc2_cloud` retains detect-secrets entropy scanning and does not merge into `llm_default`. Entropy scanning introduces variable latency and is not appropriate for the real-time hot path default.
+
+### Governance constraint
+Additions to `llm_default` beyond the three named patterns require a council decision. The boundary is explicit — `llm_default` does not become a catch-all by accumulation.
+
+### Deferred
+The code-detection severity floor (floor severity at `low` when payload is detected as source code) is a separate decision. Deferred — touches policy logic in the worker, not template configuration.
+
+### What must be updated before implementation
+- `planning/vertical-templates/findings.md` template table — replace `general_pii` as default, add `llm_default` row
+- Template registry spec — reflect new default and composed structure
+
+### Critical flag trigger
+Any change that adds an entropy-based or subprocess-dependent recognizer to `llm_default` without a council decision violates this constraint and must be escalated immediately.
+
+---
+
 ## DEC-005 — EnvoyFilter usage: accepted for Phase 2 with planned replacement path
 
 **Date:** 2026-03-26
