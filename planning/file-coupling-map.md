@@ -1,7 +1,7 @@
 ---
 title: File Coupling Map
 purpose: Parallelization planning — before assigning two branches to the same wave, look up each file they touch here and verify their coupled sets do not overlap.
-updated: 2026-03-27
+updated: 2026-03-27 (validated against codebase; 2 inaccuracies corrected, 9 missing entries added)
 ---
 
 # File Coupling Map
@@ -47,11 +47,11 @@ Bootstraps k3d cluster, registry, Keycloak, and both services from scratch.
 - `CLAUDE.md` — prerequisites table and first-time setup section
 
 ### `scripts/status.sh`
-Health check for all services.
+Health check for all services. Checks application `/metrics` endpoints and RFC 9728 headers. Does NOT perform live connectivity checks to Prometheus or Grafana UIs — those URLs are surfaced as informational output only.
 **When changed, also review:**
 - `scripts/README.md` — documents what status.sh checks
-- `infrastructure/prometheus.yaml` / `infrastructure/jaeger.yaml` — if new UI URLs are added
 - `scripts/branch-test.sh` — status.sh is step 3; if its exit codes change, branch-test.sh must adapt
+- `infrastructure/istio/rfc9728-www-authenticate.yaml` — status.sh validates the WWW-Authenticate header this filter injects
 
 ### `scripts/README.md`
 Documents every script: when to use it, flags, examples.
@@ -79,10 +79,13 @@ Validates live NetworkPolicy enforcement via busybox test pod.
 - `infrastructure/istio/peer-authentication.yaml` — mTLS interacts with NetworkPolicy enforcement
 
 ### `scripts/classify.sh`
-Demo client — RFC 9728 discovery chain → token → classify.
+Standalone RFC 9728 discovery chain client → token acquisition → classify. Used directly and called by demo.sh.
 **When changed, also review:**
 - `scripts/demo.sh` — calls classify.sh; output format changes break demo parsing
-- `src/mcp_server/main.py` — `/mcp` endpoint and `/.well-known/oauth-protected-resource` under test
+- `src/mcp_server/main.py` — `/mcp` endpoint and `/.well-known/oauth-protected-resource` discovery
+- `keycloak/realm-import/mcp-local-realm.json` — client credentials and scopes it uses
+- `infrastructure/istio/request-authentication.yaml` — issuer and audience it must match
+- `infrastructure/istio/rfc9728-www-authenticate.yaml` — WWW-Authenticate header format it parses
 
 ### `scripts/demo.sh`
 End-to-end smoke test.
@@ -97,10 +100,10 @@ Keycloak realm admin operations.
 - `scripts/auth-test.sh` — case 5 restores TTL to 60s via keycloak-admin.sh
 
 ### `scripts/test.sh`
-Runs mcp_server pytest suite in Docker.
+Runs mcp_server pytest suite in Docker. Test dependencies are hardcoded in the script as a PACKAGES array — there is no `requirements-test.txt` file.
 **When changed, also review:**
 - `src/mcp_server/tests/` — test discovery path
-- `src/mcp_server/requirements-test.txt` — test dependencies installed inside container
+- Hardcoded package versions inside the script — if test deps need updating, edit them here directly
 
 ### `scripts/devtools-run.sh`
 Launches infrastructure/devtools.Dockerfile container with project mounted.
@@ -138,6 +141,43 @@ HTTP client for Presidio worker; strips auth headers, enforces no-payload-in-log
 - `src/worker/main.py` — worker endpoint contract (must stay compatible)
 - `src/mcp_server/tests/test_worker_client.py`
 - `planning/architecture-diagram.md` — MCP→Worker edge
+
+### `src/mcp_server/tools/classify.py`
+MCP tool handler for `classify_payload_sensitivity`; calls worker backend, writes audit record.
+**When changed, also review:**
+- `src/mcp_server/main.py` — registers and invokes this tool
+- `src/mcp_server/backend/worker_client.py` — called to perform the scan
+- `src/mcp_server/audit/trail.py` — audit record written after scan
+- `src/mcp_server/tests/test_main.py` — tool handler test coverage
+
+### `src/mcp_server/backend/models.py`
+Internal adapter schemas (WorkerScanRequest, WorkerScanResponse, WorkerRequestMetadata). Must stay compatible with `src/worker/models.py` across the MCP↔Worker boundary.
+**When changed, also review:**
+- `src/mcp_server/backend/worker_client.py` — serialises/deserialises these schemas
+- `src/worker/models.py` — **paired schema** — both sides of the API boundary must be updated together
+- `src/mcp_server/audit/trail.py` — reads WorkerScanResponse fields
+
+### `src/mcp_server/observability/logging.py`
+Structured JSON logging (JsonFormatter, _ServiceContextFilter).
+**When changed, also review:**
+- `src/mcp_server/main.py` — calls configure_logging at startup
+- `src/worker/observability/logging.py` — mirror implementation; keep both in sync
+
+### `src/mcp_server/observability/metrics.py`
+Prometheus metrics (AUTH_DECISIONS, SCAN_COMPLETIONS, SCAN_ERRORS, REQUEST_DURATION, WORKER_CALL_DURATION).
+**When changed, also review:**
+- `src/mcp_server/main.py` — calls set_build_info, uses all metric objects
+- `src/mcp_server/backend/worker_client.py` — uses WORKER_CALL_DURATION
+- `infrastructure/prometheus.yaml` — scrape config targets the /metrics endpoint these populate
+- `infrastructure/grafana.yaml` — dashboards built on these metric names
+
+### `src/mcp_server/observability/tracing.py`
+OpenTelemetry SDK setup; exports spans via OTLP gRPC.
+**When changed, also review:**
+- `src/mcp_server/main.py` — calls configure_tracing at startup
+- `helm/mcp-server/templates/configmap.yaml` — OTEL_EXPORTER_OTLP_ENDPOINT wired here
+- `infrastructure/jaeger.yaml` — OTLP endpoint must match Jaeger's gRPC receiver address
+- `src/worker/observability/tracing.py` — mirror implementation
 
 ### `src/mcp_server/audit/trail.py`
 Structured audit log writer (no payload content, caller_subject, scan_id, decision).
@@ -181,6 +221,41 @@ FastAPI entry point; `/scan`, `/health`, `/metrics`; content-type guard, payload
 - `src/mcp_server/backend/worker_client.py` — caller; API contract must stay compatible
 - `src/worker/models.py` — request/response schemas
 - `planning/architecture-diagram.md` — if worker behaviour changes
+
+### `src/worker/models.py`
+Request/response schemas (ScanRequest, ScanResponse, ConfidenceSummary, ErrorResponse). Paired with `src/mcp_server/backend/models.py` — both sides of the API boundary.
+**When changed, also review:**
+- `src/worker/main.py` — deserialises ScanRequest, serialises ScanResponse
+- `src/mcp_server/backend/models.py` — **paired schema** — must be updated together
+- `src/worker/minimizer.py` — builds ScanResponse
+
+### `src/worker/analyzer.py`
+Presidio AnalyzerEngine wrapper; lazy singleton; strips results to `{entity_type, score}` tuples.
+**When changed, also review:**
+- `src/worker/main.py` — calls `get_engine()` on every request
+- `src/worker/minimizer.py` — consumes stripped findings output
+- `src/worker/classification.py` — entity types must be in the APPROVED_ENTITY_TYPES allowlist
+
+### `src/worker/observability/logging.py`
+Structured JSON logging.
+**When changed, also review:**
+- `src/worker/main.py` — calls configure_logging at startup
+- `src/mcp_server/observability/logging.py` — mirror implementation; keep both in sync
+
+### `src/worker/observability/metrics.py`
+Prometheus metrics (FINDINGS_PER_SCAN, PRESIDIO_ANALYZE_DURATION, SCAN_COMPLETIONS, etc.).
+**When changed, also review:**
+- `src/worker/main.py` — uses all metric objects
+- `infrastructure/prometheus.yaml` — scrapes worker /metrics endpoint
+- `infrastructure/grafana.yaml` — dashboards built on these metric names
+
+### `src/worker/observability/tracing.py`
+OpenTelemetry SDK setup; exports spans via OTLP gRPC.
+**When changed, also review:**
+- `src/worker/main.py` — calls configure_tracing at startup
+- `helm/presidio-worker/templates/configmap.yaml` — OTEL_EXPORTER_OTLP_ENDPOINT wired here
+- `infrastructure/jaeger.yaml` — OTLP endpoint must match Jaeger's gRPC receiver address
+- `src/mcp_server/observability/tracing.py` — mirror implementation
 
 ### `src/worker/classification.py`
 Severity mapping and decision logic.
@@ -303,12 +378,15 @@ Chart metadata and version.
 ## Infrastructure
 
 ### `infrastructure/k3d-config.yaml`
-k3d cluster spec (port mappings, server count, traefik disabled).
+k3d cluster spec (port mappings, server count, traefik disabled). Port mappings are the source of truth for all localhost URLs used in scripts and local Helm values — any port change requires a sweep of every file below.
 **When changed, also review:**
 - `scripts/setup-local.sh` — references this file directly
 - `CLAUDE.md` — prerequisites table and port mapping documentation
 - `scripts/README.md` — if port mappings change, URLs in docs must update
 - `infrastructure/prometheus.yaml` / `infrastructure/grafana.yaml` — if observability ports change
+- `scripts/status.sh`, `scripts/auth-test.sh`, `scripts/demo.sh`, `scripts/classify.sh` — hardcode localhost port numbers (8000, 8080, 8090)
+- `helm/mcp-server/values.local.yaml` — `serverResourceUrl: http://localhost:8000`
+- `infrastructure/istio/rfc9728-www-authenticate.yaml` — hardcodes `http://localhost:8000`
 
 ### `infrastructure/keycloak-local.yaml`
 Keycloak Deployment + Service for local dev.
@@ -323,6 +401,14 @@ Prometheus StatefulSet with scrape config.
 - `infrastructure/grafana.yaml` — Prometheus is a Grafana data source
 - `scripts/status.sh` — checks Prometheus endpoint
 - `helm/mcp-server/templates/service.yaml` + `helm/presidio-worker/templates/service.yaml` — scrape targets
+
+### `infrastructure/jaeger.yaml`
+Jaeger all-in-one deployment (OTLP gRPC receiver on port 4317, UI on port 16686).
+**When changed, also review:**
+- `helm/mcp-server/templates/configmap.yaml` — `OTEL_EXPORTER_OTLP_ENDPOINT` points to Jaeger's gRPC address
+- `helm/presidio-worker/templates/configmap.yaml` — same
+- `src/mcp_server/observability/tracing.py` + `src/worker/observability/tracing.py` — OTLP exporters connect here
+- `infrastructure/grafana.yaml` — Jaeger is a Grafana data source
 
 ### `infrastructure/grafana.yaml`
 Grafana deployment with Prometheus + Jaeger data sources.
@@ -353,6 +439,13 @@ mTLS STRICT enforcement between services.
 - `helm/presidio-worker/templates/networkpolicy.yaml`
 - `scripts/validate-networkpolicy.sh`
 - `planning/decision-log.md` — DEC-001 mTLS status
+
+### `infrastructure/istio/envoy-rate-limit.yaml`
+Per-pod rate limit filter (60 req/min). Accepted for Phase 2, must be replaced before Phase 3 (DEC-005).
+**When changed, also review:**
+- `src/mcp_server/main.py` — rate limit errors surface as 429 responses; error format must match
+- `scripts/auth-test.sh` — if rate limit behaviour changes, test matrix may need a new case
+- `planning/decision-log.md` — DEC-005 replacement path
 
 ### `infrastructure/istio/rfc9728-www-authenticate.yaml`
 Injects `WWW-Authenticate: Bearer resource_metadata=...` on 401/403.
