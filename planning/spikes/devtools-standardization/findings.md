@@ -1,7 +1,7 @@
 ---
 spike: devtools-run Standardization
 owner: Engineering Practices Lead
-status: complete
+status: complete — implementation constraint added 2026-03-27
 date: 2026-03-27
 ---
 
@@ -126,9 +126,9 @@ Wrap the 5 scripts that require k3d, kubectl, or helm. Leave the remaining 5 scr
 **Effort estimates:**
 | Script | Change | Effort |
 |--------|--------|--------|
-| `setup-local.sh` | Remove tool checks; add header note | S |
-| `rebuild.sh` | Remove tool checks and sg docker; add header note | S |
-| `status.sh` | Remove sg docker; simplify k3d fallback (not needed in container) | S |
+| `setup-local.sh` | Replace tool checks with `/.dockerenv`-aware guard | S |
+| `rebuild.sh` | Replace tool checks and sg docker with `/.dockerenv`-aware guard | S |
+| `status.sh` | Replace sg docker with `/.dockerenv`-aware guard; simplify k3d fallback | S |
 | `validate-networkpolicy.sh` | No code change; update invocation docs | XS |
 | `branch-test.sh` | Update README invocation examples | XS |
 | `scripts/README.md` | Add devtools-run.sh decision tree section | S |
@@ -175,6 +175,53 @@ full onboarding flow (setup → test → classify).
 
 **Why it matters:** Documents the two-path model explicitly. Removes ambiguity about when the
 wrapper is needed.
+
+---
+
+## Implementation Design Constraint: Parallel-Compatible Pattern
+
+**Priority: HIGH — required design constraint, not optional polish.**
+
+### The problem with the naive implementation
+
+The obvious approach — removing tool checks from scripts — breaks direct invocation for
+developers who already have k3d/kubectl/helm installed. It forces an immediate hard cut-over:
+main branch (old direct path) and feature branch (new wrapped path) cannot coexist. You
+cannot prove parity before the cut-over because there is no old path left to compare against.
+
+### The solution: `/.dockerenv`-aware guard
+
+Docker places a `/.dockerenv` file in every container it runs. Several scripts already use
+this file to skip `sg docker` group reapplication when running inside a container. The same
+detection can guard the tool check:
+
+```bash
+# At the top of setup-local.sh, rebuild.sh, status.sh (after shebang + header):
+if [ ! -f /.dockerenv ] && ! command -v k3d &>/dev/null; then
+  echo "k3d not found. Run via: ./scripts/devtools-run.sh $0 $@"
+  exit 1
+fi
+```
+
+### What this enables
+
+| Invocation | Outcome |
+|---|---|
+| Direct, machine *with* k3d | Works as today — tool check passes |
+| Direct, machine *without* k3d | Fails with a clear pointer to the wrapper |
+| Via `devtools-run.sh` | Works — `/.dockerenv` present, tool check skipped |
+
+- Feature branch develops the guard pattern; main branch is untouched
+- Both invocation styles work simultaneously — no forced cut-over
+- Parity can be validated end-to-end on the feature branch before merge
+- Developers with host tools installed do not need to change their habits
+- Merge = cut-over, de-risked by proven parity
+
+### Implementation rule
+
+**Do not remove tool checks. Replace them with the `/.dockerenv`-aware guard above.**
+Any implementation that removes tool checks without the container detection gate violates
+this constraint and will break the parallel development path.
 
 ---
 

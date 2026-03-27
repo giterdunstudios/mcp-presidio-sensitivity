@@ -57,7 +57,8 @@
       "Read(//home/james/dev/projects/mcp-presidio-sensitivity find src/**)",
       "Bash(cd /home/james/dev/projects/mcp-presidio-sensitivity find src/mcp_server/tests -name \"test_*.py\")",
       "Bash(for f:*)",
-      "Bash(do echo:*)"
+      "Bash(do echo:*)",
+      "Bash(git tag:*)"
     ]
   }
 }
