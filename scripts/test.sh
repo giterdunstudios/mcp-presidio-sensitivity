@@ -20,7 +20,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-MCP_SRC="$PROJECT_ROOT/src/mcp_server"
+
+# When running inside devtools-run.sh, Docker volume mounts are resolved from
+# the host — not the container. HOST_PROJECT_ROOT carries the host path so
+# the test container receives the correct source mount.
+HOST_PROJECT_ROOT="${HOST_PROJECT_ROOT:-$PROJECT_ROOT}"
+MCP_SRC="$HOST_PROJECT_ROOT/src/mcp_server"
 
 PYTEST_ARGS=("${@:--v}")
 

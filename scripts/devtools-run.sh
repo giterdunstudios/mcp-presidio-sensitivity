@@ -41,6 +41,7 @@ docker run --rm -i \
   -v "$PROJECT_ROOT:/workspace" \
   --network host \
   --workdir /workspace \
+  -e HOST_PROJECT_ROOT="$PROJECT_ROOT" \
   "$DEVTOOLS_IMAGE" \
   "$@"
 EXIT_CODE=$?

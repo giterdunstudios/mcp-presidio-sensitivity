@@ -1,7 +1,9 @@
 FROM alpine:3.20
 
 # Core utilities (python3 required by status.sh and other scripts for JSON parsing)
-RUN apk add --no-cache bash curl ca-certificates tar gzip python3
+# util-linux provides GNU versions of flock, nsenter, unshare, etc. — replacing
+# BusyBox stubs that lack flags like flock -w (timeout wait).
+RUN apk add --no-cache bash curl ca-certificates tar gzip python3 util-linux
 
 # Docker CLI (talks to host daemon via socket mount — no daemon installed here)
 RUN apk add --no-cache docker-cli
