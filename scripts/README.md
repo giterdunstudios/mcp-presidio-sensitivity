@@ -214,6 +214,27 @@ Steps:
 
 ---
 
+## coupling-analysis.sh
+Mines git commit history to compute co-change frequency between solution artifacts.
+Outputs `planning/coupling-data.json` — the empirical coupling matrix used by the
+planning agent to evaluate parallelization safety before wave construction.
+
+**When:** After every merge to main, before a wave planning session. Run on main
+only — feature branch history produces misleading pair counts.
+
+```bash
+./scripts/coupling-analysis.sh                          # regenerate JSON (default)
+./scripts/coupling-analysis.sh --format table           # human-readable table
+./scripts/coupling-analysis.sh --format table | grep -E "strong|moderate"
+./scripts/coupling-analysis.sh --since pre-wave-work    # limit to post-tag history
+./scripts/devtools-run.sh ./scripts/coupling-analysis.sh
+```
+
+See `planning/temporal-coupling-spec.md` for the full coupling tier and confidence
+tier definitions, and the planning agent operating model.
+
+---
+
 ## Typical session workflow
 
 ```bash
@@ -235,4 +256,7 @@ Steps:
 
 # 5. Branch validation before merge (agents: run via devtools-run.sh)
 ./scripts/devtools-run.sh ./scripts/branch-test.sh
+
+# 6. Before wave planning — regenerate coupling data from merged history
+./scripts/coupling-analysis.sh
 ```

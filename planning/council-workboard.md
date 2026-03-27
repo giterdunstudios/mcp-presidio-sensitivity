@@ -76,7 +76,7 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 ## Engineering Practices Lead
 
 ### Active
-- BP-027: Temporal coupling analysis Phase 1 — `coupling-analysis.sh` + `coupling-data.json` (urgent, pre-wave)
+- None
 
 ### Queued
 - Dev/prod parity baseline (BP-013) — document delta between k3d local and Phase 2 target
@@ -89,6 +89,7 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 - Helm chart version bump policy (BP-021)
 
 ### Completed this session
+- BP-027: coupling-analysis.sh + coupling-data.json ✅ — 72 commits, 8 strong / 24 moderate pairs
 - BP-002/003: SBOM valid JSON, fresh UUID ✅
 - BP-005: k3d version pinned in CLAUDE.md ✅
 - BP-006: Test coverage audit — 58 tests, main.py covered ✅
