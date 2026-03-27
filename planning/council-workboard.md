@@ -95,6 +95,7 @@ Maintained per §5b of `role-instructions/ways-of-working.md`.
 - BP-007: RFC 9728 unit tests ✅
 - BP-009: Wave 3 regression ✅
 - BP-015: Flannel NetworkPolicy enforcement confirmed ✅
+- BP-026: devtools-run standardization spike complete ✅ — Option C (partial wrap) recommended, parallel-compatible `/.dockerenv` guard pattern required, HIGH priority Pre-Phase 2; see `planning/spikes/devtools-standardization/findings.md`
 
 ### Needs coordination
 - Dev/prod parity standard — requires: Technical Implementation Lead, Product/Scope Lead; timing: before Phase 2 scope opens
