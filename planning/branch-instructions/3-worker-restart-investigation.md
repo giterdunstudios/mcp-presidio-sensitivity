@@ -93,19 +93,71 @@ Look for:
 ---
 
 ## Findings Addendum
-*(Fill this section in during investigation — leave blank until investigation is complete)*
 
-**Date investigated:**
+**Date investigated:** 2026-03-27
 
-**Investigator:**
+**Investigator:** Technical Implementation Lead
 
-**Restart count at time of investigation:**
+**Restart count at time of investigation:** 0 (current pod; no previous terminated container in this cluster run)
 
-**Root cause category:** [ ] OOMKill  [ ] Probe misconfiguration  [ ] Application crash  [ ] Other
+**Root cause category:** [x] OOMKill (imminent risk — not yet triggered in current cluster run, but memory headroom is critically low)
 
 **Evidence:**
 
+Pod `presidio-worker-6cdd5dbb94-cpdfs` was started via a manual rolling restart at `2026-03-27T17:34:32Z` (confirmed by the `kubectl.kubernetes.io/restartedAt` annotation on the pod — this was a `rebuild.sh` deploy, not a crash restart). The pod has been Running for 5h14m with 0 restarts. There are no events in the `mcp-presidio` namespace and no previous terminated container logs. The original "9+ restarts" referenced in the branch goal occurred in a prior cluster run; restart counts reset on cluster recreate.
+
+**Current memory state (from `kubectl top pods --containers`):**
+
+| Container | Limit | Current Usage | Headroom |
+|---|---|---|---|
+| `presidio-worker` | 768Mi | 757Mi | 11Mi (1.4%) |
+| `istio-proxy` | 1Gi | 25Mi | n/a |
+
+The `presidio-worker` container is at **98.6% of its 768Mi limit at idle**. The 768Mi limit is applied via `helm/presidio-worker/values.local.yaml` — it overrides the `values.yaml` default of 512Mi (which would already OOMKill at startup given ~757Mi idle RSS). The 512Mi default in `values.yaml` is therefore incorrect for this workload.
+
+**`kubectl describe pod` — key sections:**
+
+```
+State:          Running
+  Started:      Fri, 27 Mar 2026 17:34:43 +0000
+Ready:          True
+Restart Count:  0
+Limits:
+  cpu:     1
+  memory:  768Mi
+Requests:
+  cpu:      250m
+  memory:   512Mi
+Liveness:   http-get http://:15020/app-health/presidio-worker/livez delay=45s timeout=5s period=30s #success=1 #failure=3
+Readiness:  http-get http://:15020/app-health/presidio-worker/readyz delay=45s timeout=5s period=10s #success=1 #failure=3
+Events:     <none>
+```
+
+The 45s initial delay on both liveness and readiness probes is appropriate for spaCy model load time (~1-2s observed in current logs, but the delay provides margin).
+
+**No previous container logs available** — `kubectl logs --previous` returned `BadRequest: previous terminated container "presidio-worker" not found`. No OOMKill evidence exists in the current cluster run.
+
+**Memory configuration discrepancy:**
+- `helm/presidio-worker/values.yaml` (committed): `limits.memory: 512Mi` — **insufficient for this workload**
+- `helm/presidio-worker/values.local.yaml` (override): `limits.memory: 768Mi` — currently deployed limit
+- Idle RSS at 757Mi means any in-flight scan that increases memory even marginally will trigger OOMKill
+
 **Conclusion:**
 
+The current cluster run shows 0 restarts, but the pod is operating at 98.6% of its memory limit at idle. The prior "9+ restarts" almost certainly were OOMKills: the `values.yaml` default of 512Mi is well below the spaCy `en_core_web_lg` idle RSS (~757Mi), so any deployment using the default limit without the local override would OOMKill within seconds of startup. The local override of 768Mi keeps the pod alive but provides only 11Mi of headroom — insufficient to handle scan requests involving large payloads or concurrent requests without triggering OOMKill.
+
+The root cause for historical restarts: **OOMKill caused by `values.yaml` default `limits.memory: 512Mi` being below the spaCy model's idle RSS.** The local override of 768Mi is a temporary mitigation, not a safe production configuration.
+
+Secondary risk: the 768Mi local override is itself too low for production use. Any scan request that causes Presidio to hold the scanned payload plus analysis intermediates in memory alongside the 757Mi idle RSS will OOMKill. The limit needs to be raised substantially, and the `values.yaml` default must be corrected so deployments without the local override do not OOMKill immediately.
+
 **Follow-up action:**
-(Proposed backlog item: description / priority / proposed owner — item numbers are assigned by the council reviewing these findings, not by the investigator)
+
+Proposed backlog item: **Raise `presidio-worker` memory limit in `values.yaml` to a safe default for the spaCy `en_core_web_lg` workload.**
+
+- Current `values.yaml` default (512Mi) OOMKills at startup. Must be corrected.
+- Proposed: raise `values.yaml` `limits.memory` to at least `1Gi` (preferably `1.5Gi`) to accommodate idle RSS (~757Mi) plus per-request headroom for concurrent scans and Presidio analyzer intermediates.
+- Update `requests.memory` accordingly (currently 256Mi — also too low; set to `768Mi` or `1Gi`).
+- Remove the memory override from `values.local.yaml` once `values.yaml` has a correct default (or retain local override only if local environment has tighter resource constraints than the target).
+- Priority: high — the current pod is one large scan away from OOMKill.
+- Proposed owner: Technical Implementation Lead.
+- Note: this is a `helm/` change; do NOT implement on this investigation branch.
