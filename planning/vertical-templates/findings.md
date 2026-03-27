@@ -143,7 +143,7 @@ anonymizer_config:      # Optional — for presidio-anonymizer
 4. **Template versioning** — slug + version recorded in audit trail per scan
 
 **Proposed initial template set:**
-| Slug | Standard | Default? | Priority | Notes |
+| Slug | Standard | Default | Priority | Notes |
 |---|---|---|---|---|
 | `llm_default` | `general_pii` + AWS/GitHub/GCP prefix-anchored secrets | **Yes — MCP tool default** | High | Pattern-only, deterministic latency. DEC-006. |
 | `general_pii` | Presidio built-ins baseline only | No | High | Pure Presidio defaults. No custom recognizers. |

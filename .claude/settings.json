@@ -46,7 +46,18 @@
       "Bash(k3d version:*)",
       "Bash(/usr/local/bin/k3d version:*)",
       "Read(//usr/**)",
-      "Bash(./scripts/devtools-run.sh ./scripts/rebuild.sh mcp)"
+      "Bash(./scripts/devtools-run.sh ./scripts/rebuild.sh mcp)",
+      "Bash(git mv:*)",
+      "Bash(git push:*)",
+      "Bash(./scripts/devtools-run.sh ./scripts/branch-test.sh)",
+      "Read(//home/james/dev/projects/mcp-presidio-sensitivity/**)",
+      "Bash(./scripts/auth-test.sh --skip-expiry)",
+      "Bash(wc -l /home/james/dev/projects/mcp-presidio-sensitivity/planning/vertical-templates/*.md)",
+      "Bash(./scripts/devtools-run.sh ./scripts/devtools-run.sh k3d version)",
+      "Read(//home/james/dev/projects/mcp-presidio-sensitivity find src/**)",
+      "Bash(cd /home/james/dev/projects/mcp-presidio-sensitivity find src/mcp_server/tests -name \"test_*.py\")",
+      "Bash(for f:*)",
+      "Bash(do echo:*)"
     ]
   }
 }

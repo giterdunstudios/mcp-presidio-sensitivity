@@ -10,7 +10,7 @@ Coordination items are tracked in `planning/council-workboard.md`.
 When an item is proposed and no role schedules it for valid project reasons,
 it must be raised at the next council meeting per §5c.
 
-**Last updated:** 2026-03-27 (council tech debt audit complete)
+**Last updated:** 2026-03-27 (BP-026 spike added — devtools-run standardization)
 
 ---
 
@@ -41,6 +41,7 @@ it must be raised at the next council meeting per §5c.
 | BP-021 | Helm chart version bump policy | `proposed` | Engineering Practices Lead | Pre-Phase 3 | Both charts frozen at 0.1.0 — can't correlate running pod to chart version in audit trail. See tech-debt-backlog.md #13. |
 | BP-022 | Helm test hooks | `proposed` | Technical Implementation Lead | Pre-Phase 3 | No post-deploy smoke test; Helm native support unused. See tech-debt-backlog.md #14. |
 | BP-023 | Registry authentication gap — document as known gap | `proposed` | Engineering Practices Lead | Pre-Phase 3 | Unauthenticated pushes accepted — undocumented, not a deliberate decision. See tech-debt-backlog.md #21. |
+| BP-026 | Standardize devtools-run.sh as launcher for infra-heavy scripts | `proposed` | Engineering Practices Lead | Spike complete — scheduling TBD | Spike complete 2026-03-27. Recommendation: Option C (partial) — wrap setup-local.sh, rebuild.sh, status.sh, validate-networkpolicy.sh, branch-test.sh; leave test.sh, classify.sh, auth-test.sh, demo.sh, keycloak-admin.sh direct. Estimated effort: ~1 day. Demoable milestones defined. See `planning/spikes/devtools-standardization/findings.md`. |
 | BP-024 | Image vulnerability scanning (Trivy/Grype in rebuild.sh) | `proposed` | Security/Privacy Lead | Pre-Phase 3 | No CVE check for images handling PII data. See tech-debt-backlog.md #20. |
 | BP-025 | Image signing (Cosign) | `proposed` | Security/Privacy Lead | Pre-Phase 3 | Images are unsigned — no integrity guarantee. See tech-debt-backlog.md #28. |
 
