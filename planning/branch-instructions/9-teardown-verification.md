@@ -90,31 +90,48 @@ Record the output of each docker volume / docker ps check in the findings addend
 ---
 
 ## Findings Addendum
-*(Fill this section in during verification — leave blank until verification is complete)*
 
-**Date verified:**
+**Date verified:** 2026-03-27
 
-**Investigator:**
+**Investigator:** Engineering Practices Lead
 
 **Pre-teardown state:**
-- Cluster: (k3d cluster list output)
-- Registry: (k3d registry list output)
-- Containers: (docker ps filter output)
-- Volumes: (docker volume ls filter output)
+- Cluster: `mcp-presidio` (1 server, 0 agents, loadbalancer — running)
+- Registry: `k3d-mcp-registry` (running)
+- Containers: `k3d-mcp-presidio-serverlb`, `k3d-mcp-presidio-server-0`, `k3d-mcp-registry`
+- Volumes: `local k3d-mcp-presidio-images`
 
 **Post-teardown state:**
-- Cluster: (k3d cluster list output — no `mcp-presidio` line expected)
-- Registry: (k3d registry list output — no `k3d-mcp-registry` line expected)
-- kubeconfig context: (kubectl config get-contexts | grep mcp-presidio output — no output expected)
-- Orphaned containers: (docker ps filter output — no output expected)
-- Orphaned volumes: (docker volume ls | grep k3d output — no output expected; list any lines if present)
+- Cluster: no `mcp-presidio` line — ✅ clean
+- Registry: no `k3d-mcp-registry` line — ✅ clean
+- kubeconfig context: removed (no output) — ✅ clean
+- Orphaned containers: none — ✅ clean
+- Orphaned volumes: none (`docker volume ls | grep k3d` returned no output) — ✅ clean
 
-**Fresh setup duration (wall clock):**
+**Fresh setup duration (wall clock):** ~3 minutes (images fully cached from prior build; no spaCy model download needed)
 
-**status.sh result after fresh setup:** [ ] All green  [ ] Issues found (describe)
+**Smoke test note:** `setup-local.sh` exited with error on the smoke test step ("Worker health — could not reach http://localhost:8090/health"). The worker pod had just started (~90s old); the spaCy model was still initialising and the external port was not yet accepting connections. All pods showed Running+Ready within 30s of the error. The smoke test timing issue does not reflect orphaned resources — it is a pre-existing race condition between pod startup and the smoke test check. New backlog item recommended (see below).
 
-**branch-test.sh result:** [ ] All 5 steps passed  [ ] Failures (describe)
+**status.sh result after fresh setup:** [x] Issues found
+- All pods Running (6/6) ✅
+- Keycloak, worker, MCP server health endpoints ✅
+- Token acquisition (60s TTL) ✅
+- RFC 9728 discovery document ✅
+- **FAIL: RFC 9728 WWW-Authenticate auth challenge missing `resource_metadata`** — pre-existing issue, not introduced by teardown (see BP-029 below)
 
-**Orphaned resources found:** [ ] None  [ ] Yes (describe + backlog item #)
+**branch-test.sh result:** [x] Failures
+- Unit tests ✅ (58/58)
+- Rebuild and deploy ✅
+- Stack health ✅ (status.sh warning noted above)
+- **FAIL: Auth enforcement** — Case 1: received HTTP 200 (expected 401/403). Pre-existing issue — see BP-029.
+- NetworkPolicy ✅ (all 10 cases pass)
 
-**Conclusion:**
+**Orphaned resources found:** [x] None — teardown is clean.
+
+**Pre-existing issue discovered — BP-029:**
+
+The auth enforcement failure is not caused by teardown/rebuild. Root cause: `JWTAuthMiddleware` was removed in commit `aa7c97b` ("feat(phase2): migrate auth enforcement to Istio/Envoy") before Istio was installed. The MCP server's `RequestContextMiddleware` assumes Envoy has already validated the JWT — no application-level auth guard remains. With Istio not yet deployed (Phase 2 work), the `/mcp` endpoint accepts unauthenticated requests.
+
+This is a security gap that predates Wave 1. It requires a decision: either re-add a temporary `JWTAuthMiddleware` for the pre-Istio period, or accept the gap and document it as "auth enforcement requires Phase 2 Istio deployment." Tracked as **BP-029** in the best-practices backlog.
+
+**Conclusion:** Teardown is clean — no orphaned containers, volumes, or kubeconfig contexts. Fresh setup completes correctly (images cached). The `branch-test.sh` auth failure is a pre-existing architectural gap (BP-029) unrelated to teardown behaviour. BP-011 acceptance criterion on teardown cleanliness is met.
