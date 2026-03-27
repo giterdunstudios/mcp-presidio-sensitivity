@@ -10,7 +10,7 @@ Coordination items are tracked in `planning/council-workboard.md`.
 When an item is proposed and no role schedules it for valid project reasons,
 it must be raised at the next council meeting per §5c.
 
-**Last updated:** 2026-03-26 (Wave 3 complete)
+**Last updated:** 2026-03-27 (council tech debt audit complete)
 
 ---
 
@@ -28,11 +28,21 @@ it must be raised at the next council meeting per §5c.
 
 | ID | Item | Status | Owner role | Phase | Notes |
 |----|------|--------|-----------|-------|-------|
-| BP-001 | SBOM (`bom.json`) automated regeneration via cdxgen in `rebuild.sh` | `proposed` | Security/Privacy Lead (owns SBOM); Technical Implementation Lead (implements cdxgen) | Pre-Phase 2 | cdxgen integration; SBOM regenerates on every image push. Security/Privacy Lead must approve toolchain. Discussed 2026-03-26. |
+| BP-001 | SBOM (`bom.json`) automated regeneration via cdxgen in `rebuild.sh` | `proposed` | Security/Privacy Lead (owns SBOM); Technical Implementation Lead (implements cdxgen) | Pre-Phase 2 | cdxgen integration; SBOM regenerates on every image push. Security/Privacy Lead must approve toolchain. Discussed 2026-03-26. See tech-debt-backlog.md #22. |
 | BP-002 | SBOM acceptance criteria for Phase 1 exit sign-off | `scheduled` | Security/Privacy Lead | Phase 1 exit | Security/Privacy Lead owns and signs off on SBOM. Must define criteria before Phase 1 exit. |
-| BP-003 | `bom.json` serialNumber should be generated (not static) | `proposed` | Security/Privacy Lead | Pre-Phase 2 | Current serialNumber is a fixed UUID; cdxgen integration (BP-001) resolves this. Blocked on BP-001. |
+| BP-003 | `bom.json` serialNumber should be generated (not static) | `proposed` | Security/Privacy Lead | Pre-Phase 2 | Current serialNumber is a fixed UUID; cdxgen integration (BP-001) resolves this. Blocked on BP-001. See tech-debt-backlog.md #23. |
 | BP-004 | Verify all roles have read `ways-of-working.md` v1.1 | `complete` | Engineering Practices Lead | 2026-03-26 | Ratification session served as read-through. |
-| BP-005 | Pin exact k3d version in CLAUDE.md prerequisites table | `proposed` | Engineering Practices Lead | Wave 3 | Currently listed as `5.x`. Pin to installed version after Wave 3 setup-local.sh run. |
+| BP-005 | Pin exact k3d version in CLAUDE.md prerequisites table | `proposed` | Engineering Practices Lead | Wave 3 | Currently listed as `5.x`. Pin to installed version (5.7.4) after Wave 3 setup-local.sh run. See tech-debt-backlog.md #1 note: version confirmed as 5.7.4. |
+| BP-016 | Registry GC script (`scripts/registry-gc.sh`) | `proposed` | Engineering Practices Lead | Pre-Phase 3 | Unreferenced image layers accumulate on every rebuild — silent disk growth. See tech-debt-backlog.md #1. |
+| BP-017 | Registry process documentation in `scripts/README.md` | `proposed` | Engineering Practices Lead | Pre-Phase 3 | No documented policy for when/how to run GC. See tech-debt-backlog.md #2. |
+| BP-018 | SBOM refresh post-Phase 2 | `proposed` | Security/Privacy Lead | Post-Phase 2 | auth/ deleted, Istio/Envoy CRDs added — current SBOM doesn't reflect running system. See tech-debt-backlog.md #4. |
+| BP-019 | requirements.lock.txt sync check in test.sh or rebuild.sh | `proposed` | Technical Implementation Lead | Pre-Phase 3 | Nothing verifies lock file matches requirements.txt — could ship wrong deps silently. See tech-debt-backlog.md #5. |
+| BP-020 | Hardcoded credential pre-prod gate | `proposed` | Security/Privacy Lead | Pre-Phase 3 | CLIENT_SECRET / ADMIN_PASSWORD have change-in-prod values with no enforcement gate. See tech-debt-backlog.md #6. |
+| BP-021 | Helm chart version bump policy | `proposed` | Engineering Practices Lead | Pre-Phase 3 | Both charts frozen at 0.1.0 — can't correlate running pod to chart version in audit trail. See tech-debt-backlog.md #13. |
+| BP-022 | Helm test hooks | `proposed` | Technical Implementation Lead | Pre-Phase 3 | No post-deploy smoke test; Helm native support unused. See tech-debt-backlog.md #14. |
+| BP-023 | Registry authentication gap — document as known gap | `proposed` | Engineering Practices Lead | Pre-Phase 3 | Unauthenticated pushes accepted — undocumented, not a deliberate decision. See tech-debt-backlog.md #21. |
+| BP-024 | Image vulnerability scanning (Trivy/Grype in rebuild.sh) | `proposed` | Security/Privacy Lead | Pre-Phase 3 | No CVE check for images handling PII data. See tech-debt-backlog.md #20. |
+| BP-025 | Image signing (Cosign) | `proposed` | Security/Privacy Lead | Pre-Phase 3 | Images are unsigned — no integrity guarantee. See tech-debt-backlog.md #28. |
 
 ---
 
