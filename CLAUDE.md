@@ -13,7 +13,7 @@ Key components:
 - `keycloak/` — Realm import for local Keycloak instance
 - `infrastructure/` — k3d cluster config, Keycloak deployment manifest
 - `scripts/` — All dev scripts (see below)
-- `planning/` — Specs, decision log, auth flow diagrams, pipeline diagram
+- `planning/` — Specs, decision log, and diagrams (files ending in `-diagram.md`)
 
 ## Prerequisites — New Machine Setup
 
@@ -124,5 +124,6 @@ Architectural decisions with rationale are in `planning/decision-log.md`.
 @planning/decision-log.md
 
 ## Planning Documents
-@planning/auth-flows.md
-@planning/pipeline.md
+@planning/auth-flows-diagram.md
+@planning/pipeline-diagram.md
+@planning/architecture-diagram.md
