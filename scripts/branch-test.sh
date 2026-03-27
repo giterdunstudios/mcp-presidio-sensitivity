@@ -33,12 +33,16 @@
 #
 # CLUSTER COORDINATION:
 #   Steps 2–5 (and 6) modify and query the shared k3d cluster. Only one
-#   branch should be deployed at a time. Run unit tests (step 1) in parallel;
-#   coordinate with other agents before starting step 2.
+#   branch should be deployed at a time. Unit tests (step 1) run before the
+#   lock is acquired so multiple agents can test in parallel up to that point.
+#   A flock on LOCK_FILE serialises everything from step 2 onward — the second
+#   agent blocks until the first releases (on exit, even if it crashes).
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCK_FILE="${TMPDIR:-/tmp}/mcp-presidio-cluster.lock"
+LOCK_TIMEOUT=300   # seconds to wait before giving up
 
 FULL=false
 for arg in "$@"; do
@@ -78,6 +82,27 @@ if [[ $FAILURES -gt 0 ]]; then
   printf '\033[31m\033[1mUnit tests failed — aborting branch validation.\033[0m\n'
   exit 1
 fi
+
+# ---------------------------------------------------------------------------
+# Acquire cluster lock — serialises steps 2–5 across all agents.
+# flock releases automatically when this process exits (clean or crash).
+# ---------------------------------------------------------------------------
+
+BRANCH=$(git -C "$SCRIPT_DIR/.." rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+header "Acquiring cluster lock"
+printf '  \033[2m--\033[0m  lock file: %s\n' "$LOCK_FILE"
+printf '  \033[2m--\033[0m  branch:    %s\n' "$BRANCH"
+printf '  \033[2m--\033[0m  timeout:   %ss\n' "$LOCK_TIMEOUT"
+
+exec 9>"$LOCK_FILE"
+if ! flock -x -w "$LOCK_TIMEOUT" 9; then
+  printf '\n\033[31m\033[1mCould not acquire cluster lock after %ds.\033[0m\n' "$LOCK_TIMEOUT"
+  printf 'Another agent is deploying. Check: lsof %s\n' "$LOCK_FILE"
+  exit 1
+fi
+
+printf '  \033[32m✔\033[0m  Lock acquired — cluster is ours\n'
 
 # ---------------------------------------------------------------------------
 # Step 2 — Rebuild and deploy (cluster required — sequential)
@@ -127,7 +152,6 @@ for result in "${STEP_RESULTS[@]}"; do
 done
 printf '%s\n' "──────────────────────────────"
 
-BRANCH=$(git -C "$SCRIPT_DIR/.." rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 SHA=$(git -C "$SCRIPT_DIR/.." rev-parse --short HEAD 2>/dev/null || echo "unknown")
 printf '  Branch: %s  SHA: %s\n' "$BRANCH" "$SHA"
 echo ""
