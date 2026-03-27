@@ -28,9 +28,9 @@ it must be raised at the next council meeting per §5c.
 
 | ID | Item | Status | Owner role | Phase | Notes |
 |----|------|--------|-----------|-------|-------|
-| BP-001 | SBOM (`bom.json`) automated regeneration via cdxgen in `rebuild.sh` | `proposed` | Security/Privacy Lead (owns SBOM); Technical Implementation Lead (implements cdxgen) | Pre-Phase 2 | cdxgen integration; SBOM regenerates on every image push. Security/Privacy Lead must approve toolchain. Discussed 2026-03-26. See tech-debt-backlog.md #22. |
-| BP-002 | SBOM acceptance criteria for Phase 1 exit sign-off | `scheduled` | Security/Privacy Lead | Phase 1 exit | Security/Privacy Lead owns and signs off on SBOM. Must define criteria before Phase 1 exit. |
-| BP-003 | `bom.json` serialNumber should be generated (not static) | `proposed` | Security/Privacy Lead | Pre-Phase 2 | Current serialNumber is a fixed UUID; cdxgen integration (BP-001) resolves this. Blocked on BP-001. See tech-debt-backlog.md #23. |
+| BP-001 | SBOM automated regeneration via cdxgen in `rebuild.sh` | `proposed` | Security/Privacy Lead (approves); Technical Implementation Lead (implements) | Pre-Phase 2 | See automation plan below. Security/Privacy Lead must approve toolchain before implementation. |
+| BP-002 | SBOM acceptance criteria for Phase 1 exit sign-off | `complete` | Security/Privacy Lead | Phase 1 exit | `bom.json` is valid JSON, fresh UUID serialNumber, all components and vulnerability present. Accepted for Phase 1. Automation is pre-Phase 2 work. |
+| BP-003 | `bom.json` serialNumber should be generated (not static) | `complete` | Security/Privacy Lead | Phase 1 exit | Resolved 2026-03-26: fresh UUID generated. Full automation (BP-001) will regenerate on every build. |
 | BP-004 | Verify all roles have read `ways-of-working.md` v1.1 | `complete` | Engineering Practices Lead | 2026-03-26 | Ratification session served as read-through. |
 | BP-005 | Pin exact k3d version in CLAUDE.md prerequisites table | `proposed` | Engineering Practices Lead | Wave 3 | Currently listed as `5.x`. Pin to installed version (5.7.4) after Wave 3 setup-local.sh run. See tech-debt-backlog.md #1 note: version confirmed as 5.7.4. |
 | BP-016 | Registry GC script (`scripts/registry-gc.sh`) | `proposed` | Engineering Practices Lead | Pre-Phase 3 | Unreferenced image layers accumulate on every rebuild — silent disk growth. See tech-debt-backlog.md #1. |
@@ -74,6 +74,71 @@ it must be raised at the next council meeting per §5c.
 | BP-013 | Document current delta: k3d local vs Phase 2 target production topology | `proposed` | Engineering Practices Lead + Technical Implementation Lead | Before Phase 2 scope opens | Known delta: no Istio, no Cilium enforcement, no mTLS, single-node. Needs formal baseline. Needs coordination (see workboard). |
 | BP-014 | Define acceptable parity threshold: what cannot be simplified away | `proposed` | Engineering Practices Lead + Product/Scope Lead | Before Phase 2 scope opens | Rule of thumb needed: "if X is not present locally, you cannot test Y." Needs coordination. |
 | BP-015 | Validate NetworkPolicy enforcement is real under k3d/k3s CNI (kindnet → Flannel change) | `complete` | Security/Privacy Lead + Engineering Practices Lead | Wave 3 | Flannel in k3s enforces NetworkPolicy ingress — confirmed under k3s v1.30.4+k3s1. Cases 13+14 enabled in `validate-networkpolicy.sh`. `validate-networkpolicy.sh` results are live enforcement, not just object presence checks. |
+
+---
+
+## SBOM Automation Plan (BP-001)
+
+**Status:** Proposed — pre-Phase 2. Security/Privacy Lead must approve toolchain before implementation begins.
+
+### Why automate
+
+The current `bom.json` is hand-maintained. Every dependency update in `requirements.lock.txt` requires a manual edit to `bom.json`. This will be missed. The `serialNumber` is now a one-time generated UUID — it should be fresh on every build to distinguish BOM versions. The vulnerability list will drift as new CVEs are found and old ones are fixed.
+
+### Chosen tool: cdxgen
+
+`cdxgen` (CycloneDX generator, Apache-2.0) reads `requirements.lock.txt` directly and emits a valid CycloneDX 1.6 JSON BOM. It runs as a Docker container — no host install required, consistent with the devtools pattern.
+
+```bash
+# How it runs (one-liner, no host install)
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/cyclonedx/cdxgen:latest \
+  -r /workspace/src/mcp_server \
+  -t python \
+  -o /workspace/bom-mcp-server.json
+
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/cyclonedx/cdxgen:latest \
+  -r /workspace/src/worker \
+  -t python \
+  -o /workspace/bom-worker.json
+```
+
+### Integration point: `rebuild.sh`
+
+After image push, regenerate and merge:
+1. Run cdxgen against `src/mcp_server/` → `bom-mcp-server.json`
+2. Run cdxgen against `src/worker/` → `bom-worker.json`
+3. Merge both into `bom.json` with a Python merge script: union components, deduplicate by purl, preserve infrastructure components and vulnerability entries that cdxgen cannot know about (Keycloak, Jaeger, Prometheus, Grafana, the CVE entry)
+4. Inject fresh `serialNumber` UUID and current timestamp
+5. Validate output parses as JSON before overwriting `bom.json`
+
+### What cdxgen cannot generate automatically (must be preserved in merge)
+
+- Infrastructure container components (Keycloak, Jaeger, Prometheus, Grafana) — cdxgen only sees Python deps
+- Vulnerability entries with `analysis.state` and `justification` — cdxgen detects CVEs but cannot supply risk acceptance rationale
+- `metadata.component` description and license
+- `dependencies` graph (service-to-library mapping) — cdxgen generates flat lists, not service-scoped dep trees
+
+### Merge script location
+
+`scripts/generate-sbom.sh` — callable standalone or from `rebuild.sh`. Keeps `rebuild.sh` clean.
+
+### Acceptance criteria for BP-001 completion
+
+- [ ] `generate-sbom.sh` runs without host dependencies (Docker only)
+- [ ] Output is valid CycloneDX 1.6 JSON (`python3 -m json.tool bom.json` passes)
+- [ ] `serialNumber` is a fresh UUID on every run
+- [ ] `timestamp` matches current UTC time
+- [ ] All Python deps from both `requirements.lock.txt` files are present
+- [ ] Infrastructure components preserved
+- [ ] Vulnerability entry with risk acceptance rationale preserved
+- [ ] `rebuild.sh` calls `generate-sbom.sh` after image push
+- [ ] Security/Privacy Lead sign-off on output format
 
 ---
 
