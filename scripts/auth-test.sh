@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Auth enforcement test matrix for mcp-presidio-sensitivity.
 #
-# Tests that the MCP server correctly enforces auth boundaries across five
-# scenarios. Intended as a gate check after any auth-related change.
+# Tests that Envoy/Istio enforces auth boundaries across five scenarios.
+# As of Phase 2 (DEC-003), JWT validation and scope enforcement are handled
+# by the Envoy sidecar via RequestAuthentication + AuthorizationPolicy CRDs —
+# not by application middleware. Test cases are identical from the client's
+# perspective; enforcement point has moved to the mesh layer.
 #
 # When to use:
-#   After any change to auth/errors.py, auth/middleware.py, or config.py.
-#   Before Phase 1 sign-off — required gate alongside validate-networkpolicy.sh.
+#   After any change to infrastructure/istio/*.yaml or request-authentication.yaml.
+#   After an Istio control-plane upgrade.
+#   Before any Phase 2+ sign-off.
 #   Any time auth boundary behaviour is in doubt.
 #
 # Cases tested:
@@ -95,17 +99,22 @@ trap 'set_realm_ttl 60 2>/dev/null || true' EXIT
 # Case 1 — No token → 401 + RFC 9728 WWW-Authenticate
 # ---------------------------------------------------------------------------
 
-header "Case 1 — No token → 401 + RFC 9728 WWW-Authenticate"
+header "Case 1 — No token → auth challenge (401/403) + RFC 9728 WWW-Authenticate"
+# Phase 2 note: Istio's AuthorizationPolicy always returns 403 for denied requests.
+# When no JWT is present, RequestAuthentication passes the request (allow_missing),
+# then AuthorizationPolicy denies it (403). True 401 for missing tokens requires
+# a gateway-level policy not yet implemented. Both 401 and 403 are accepted here
+# provided the WWW-Authenticate header is present (RFC 9728 §5 compliance).
 
 RESP=$(curl -si --max-time 10 -X POST "$MCP/mcp" \
   -H "Content-Type: application/json" -d '{}' 2>/dev/null)
 CODE=$(echo "$RESP" | grep "^HTTP" | awk '{print $2}')
 WWW_AUTH=$(echo "$RESP" | grep -i "^www-authenticate:" | tr -d '\r')
 
-if [[ "$CODE" == "401" ]]; then
-  pass "HTTP 401 — Unauthorised"
+if [[ "$CODE" == "401" || "$CODE" == "403" ]]; then
+  pass "HTTP $CODE — auth challenge issued (Istio returns 403 for missing JWT)"
 else
-  fail "HTTP $CODE (expected 401)"
+  fail "HTTP $CODE (expected 401 or 403)"
 fi
 
 if echo "$WWW_AUTH" | grep -q "resource_metadata"; then
@@ -172,6 +181,10 @@ fi
 # ---------------------------------------------------------------------------
 
 header "Case 5 — Expired token → 401"
+# Phase 2 note: Istio's JWT authn filter has a default 60-second clock skew
+# tolerance. A token expired less than 60s ago is still considered valid.
+# This test sets TTL=2s and waits 65s to exceed the clock skew window.
+# The wait is intentional — do not reduce it.
 
 info "Setting realm TTL to 2s ..."
 set_realm_ttl 2
@@ -183,8 +196,13 @@ info "Token acquired (TTL 2s)"
 info "Restoring realm TTL to 60s (DEC-002) ..."
 set_realm_ttl 60
 
-info "Waiting 4s for token to expire ..."
-sleep 4
+WAIT=65
+printf "  \033[2m--\033[0m  Waiting ${WAIT}s for token to expire beyond Istio clock skew window (60s) ...\n"
+for i in $(seq "$WAIT" -1 1); do
+  printf "\r  \033[2m--\033[0m  %2ds remaining ... " "$i"
+  sleep 1
+done
+printf "\r  \033[2m--\033[0m  Wait complete.                          \n"
 
 CODE=$(mcp_init_code "$EXP_TOK")
 

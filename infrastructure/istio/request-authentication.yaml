@@ -1,0 +1,36 @@
+# RequestAuthentication — JWT validation via Envoy
+#
+# Istio configures the Envoy sidecar to validate Bearer JWTs on all
+# requests to the mcp-presidio-sensitivity workload. The JWKS URI is
+# derived from the Keycloak OIDC discovery document.
+#
+# Replaces: auth/token_verifier.py, auth/discovery.py (DEC-003)
+#
+# outputClaimToHeaders: the validated `sub` claim is forwarded to the
+# upstream app as x-jwt-subject so the audit trail can record caller identity.
+#
+# Local dev note: issuer uses localhost:8080 (k3d host port mapping).
+# Production values should use the cluster-internal Keycloak DNS name.
+---
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: mcp-presidio-jwt
+  namespace: mcp-presidio
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-presidio-sensitivity
+  jwtRules:
+    - issuer: "http://localhost:8080/realms/mcp-local"
+      # jwksUri must be reachable by istiod (cluster-internal).
+      # issuer above uses localhost:8080 to match the iss claim in tokens issued
+      # by Keycloak (whose frontend URL is http://localhost:8080 in local dev).
+      # These two values intentionally differ.
+      jwksUri: "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local/protocol/openid-connect/certs"
+      audiences:
+        - "mcp-presidio-server"
+      forwardOriginalToken: false
+      outputClaimToHeaders:
+        - header: x-jwt-subject
+          claim: sub

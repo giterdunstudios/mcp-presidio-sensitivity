@@ -130,7 +130,9 @@ demo_auth() {
 
   printf "  No token        → "
   CODE=$(curl -s -o /dev/null -w "%{http_code}" "$MCP/mcp")
-  [[ "$CODE" == "401" ]] && success "HTTP $CODE — Unauthorised" || fail "HTTP $CODE (expected 401)"
+  # Phase 2: Istio AuthorizationPolicy returns 403 for missing JWT (no claims to match).
+  # Both 401 and 403 indicate the auth boundary is enforced.
+  [[ "$CODE" == "401" || "$CODE" == "403" ]] && success "HTTP $CODE — auth boundary enforced" || fail "HTTP $CODE (expected 401 or 403)"
 
   printf "  Garbage token   → "
   CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer not.a.real.token" "$MCP/mcp")
@@ -712,7 +714,7 @@ fi
 if [[ $# -gt 0 && "$1" == "a" ]]; then
   for d in auth token flow 1 2 3 4 5 6 7 8 trace jaeger; do
     run_demo "$d"
-    pause
+    echo ""
   done
   exit 0
 fi

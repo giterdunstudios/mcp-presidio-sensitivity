@@ -30,7 +30,23 @@
       "Bash(./scripts/demo.sh:*)",
       "Bash(./scripts/auth-test.sh)",
       "Bash(./scripts/classify.sh:*)",
-      "Bash(./scripts/keycloak-admin.sh:*)"
+      "Bash(./scripts/keycloak-admin.sh:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(./scripts/devtools-run.sh kind:*)",
+      "Bash(./scripts/devtools-run.sh ./scripts/setup-local.sh)",
+      "Bash(./scripts/devtools-run.sh kubectl:*)",
+      "Bash(./scripts/devtools-run.sh helm:*)",
+      "Bash(./scripts/devtools-run.sh ./scripts/status.sh)",
+      "Bash(./scripts/devtools-run.sh curl:*)",
+      "Bash(./scripts/devtools-run.sh k3d:*)",
+      "Bash(istioctl version:*)",
+      "Bash(k3d cluster:*)",
+      "Bash(export PATH=$PATH:/usr/local/bin)",
+      "Bash(k3d version:*)",
+      "Bash(/usr/local/bin/k3d version:*)",
+      "Read(//usr/**)",
+      "Bash(./scripts/devtools-run.sh ./scripts/rebuild.sh mcp)"
     ]
   }
 }

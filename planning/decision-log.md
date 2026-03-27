@@ -7,6 +7,63 @@ future decision would prevent properly implementing a deferred capability.
 
 ---
 
+## DEC-005 — EnvoyFilter usage: accepted for Phase 2 with planned replacement path
+
+**Date:** 2026-03-26
+**Status:** Accepted — Phase 2 only; replace before Phase 3
+**Raised by:** Technical Implementation Lead (prompted by Istio upgrade warning)
+**Decided by:** Council (all three personas)
+
+### Decision
+Two EnvoyFilter CRDs are in use in Phase 2:
+1. `envoy-rate-limit.yaml` — `envoy.filters.http.local_ratelimit` for 60 req/min per-pod rate limiting
+2. `rfc9728-www-authenticate.yaml` — Lua HTTP filter injecting `WWW-Authenticate` on 401/403 responses
+
+Both are accepted for Phase 2. Both must be replaced before Phase 3 begins.
+
+### Rationale
+Istio surfaces the following warning when applying EnvoyFilter CRDs:
+
+> *Warning: EnvoyFilter exposes internal implementation details that may change at any time.
+> Prefer other APIs if possible, and exercise extreme caution, especially around upgrades.*
+
+The warning is accurate. EnvoyFilter patches the internal Envoy xDS configuration directly,
+bypassing Istio's abstraction layer. Filter chain names (e.g. `envoy.filters.http.jwt_authn`),
+patch operation semantics, and `typed_config` schemas are not part of Istio's stable API surface
+and may change on any Istio minor upgrade without notice. A silently broken EnvoyFilter is
+operationally dangerous because the mesh continues to run — the enforcement or header simply
+stops working.
+
+### Current gaps introduced by local_ratelimit (EnvoyFilter)
+
+`local_ratelimit` maintains per-pod counters, not per-identity counters. This violates DEC-003
+Phase 2 validation checklist cases 25 and 29:
+
+> *Case 25: Two callers with different identities → independent counters*
+> *Case 29: Rate limit key is caller identity, not client IP*
+
+A shared counter is exhausted by any single caller, penalising all others. The local rate limit
+is a temporary throttle against gross abuse, not a correct per-caller enforcement mechanism.
+
+### Replacement path
+
+| Current EnvoyFilter | Replace with | Notes |
+|---|---|---|
+| `local_ratelimit` (per-pod) | Envoy global rate limit service (Redis-backed) + `envoy.filters.http.ratelimit` | Resolves DEC-003 cases 25 + 29; per-identity keys via JWT sub claim header forwarded by `outputClaimToHeaders` |
+| Lua `WWW-Authenticate` injection | Istio `VirtualService` `headers.response.add` or Istio Gateway `HTTPRoute` response header policy | No custom Lua; survives Istio upgrades |
+
+The global rate limit path requires: Redis deployment, Envoy ratelimit service (lyft/ratelimit
+or envoyproxy/ratelimit), and a `RateLimitPolicy` (or equivalent filter config) using the
+`x-jwt-subject` header as the rate limit key. This is Phase 3 work.
+
+### Critical flag trigger
+Any Istio upgrade must be preceded by verifying both EnvoyFilter CRDs still apply cleanly
+(`istioctl analyze` + check Envoy admin `/config_dump`). If either CRD is rejected or silently
+dropped, the auth challenge header or rate limit stops working. Do not upgrade Istio without
+running `auth-test.sh` and `status.sh` immediately after.
+
+---
+
 ## DEC-004 — Local cluster platform: migrate from kind to k3d before Phase 2
 
 **Date:** 2026-03-25

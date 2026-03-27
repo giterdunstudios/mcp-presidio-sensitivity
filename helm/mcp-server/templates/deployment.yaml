@@ -14,6 +14,11 @@ spec:
     metadata:
       labels:
         {{- include "mcp-presidio-sensitivity.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Istio sidecar injection — Envoy handles JWT authn, scope enforcement,
+        # and rate limiting (DEC-003). Annotation is explicit even though the
+        # namespace has istio-injection=enabled, to make intent visible in the chart.
+        sidecar.istio.io/inject: "true"
     spec:
       # -----------------------------------------------------------------
       # Pod security — non-root (uid 1001), no privilege escalation

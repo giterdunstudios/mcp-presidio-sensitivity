@@ -27,8 +27,8 @@ resources:
 
 config:
   # In local dev, tokens are issued via localhost:8080 (k3d host port mapping).
-  # The iss claim therefore uses localhost, not the cluster-internal DNS name.
-  # Override issuerUrl so PyJWT validates against the actual token issuer.
+  # issuerUrl must match the iss claim in tokens so Envoy's RequestAuthentication
+  # and the RFC 9728 discovery response are consistent.
   issuerUrl: "http://localhost:8080/realms/mcp-local"
   # Advertise the host-accessible URL in resource_metadata and the protected
   # resource document so external clients (demo.sh, classify.sh) can follow

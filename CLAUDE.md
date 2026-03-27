@@ -22,7 +22,7 @@ Key components:
 | Tool | Version |
 |---|---|
 | Docker Engine | 29.3.0 |
-| k3d | 5.x |
+| k3d | 5.7.4 |
 | kubectl | 1.35.3 |
 | helm | 3.20.1 |
 | curl | system |

@@ -10,3 +10,6 @@ build/
 .idea/
 .vscode/
 *.swp
+
+# Local test data
+reference/fakepayload.txt

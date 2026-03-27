@@ -1,0 +1,53 @@
+# AuthorizationPolicy — scope enforcement via Envoy
+#
+# Enforces that only requests carrying a valid JWT with the
+# tools:classify.submit scope can reach the /mcp endpoint.
+# Unprotected paths (/health, /.well-known/*, /metrics) are exempt.
+#
+# Replaces: authorization/policy.py (DEC-003)
+#
+# Two policies are defined:
+#   1. allow-mcp-tool-calls  — requires valid JWT + correct scope for /mcp
+#   2. allow-unprotected     — permits /health, /.well-known/*, /metrics without auth
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-mcp-tool-calls
+  namespace: mcp-presidio
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-presidio-sensitivity
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            paths: ["/mcp", "/mcp/*"]
+      when:
+        # Exact match on the scope claim value.
+        # Istio normalizes space-delimited scope claims into individual list entries
+        # (via normalize_payload_in_metadata), so this matches whether scope is
+        # "tools:classify.submit" alone or one of several space-separated values.
+        # Wildcards (*X*, X*) interact with Istio's RBAC translation unexpectedly —
+        # exact match is the reliable choice for a known single-value scope.
+        - key: request.auth.claims[scope]
+          values: ["tools:classify.submit"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-unprotected-paths
+  namespace: mcp-presidio
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-presidio-sensitivity
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            paths:
+              - "/health"
+              - "/.well-known/oauth-protected-resource"
+              - "/metrics"

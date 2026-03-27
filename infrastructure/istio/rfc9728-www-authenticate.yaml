@@ -1,0 +1,57 @@
+# EnvoyFilter — RFC 9728 WWW-Authenticate header on auth failure responses
+#
+# Istio's AuthorizationPolicy (RBAC filter) returns 403 for requests that don't
+# carry the required JWT scope claim, including requests with no JWT at all.
+# Istio's JWT authn filter returns 401 for invalid JWTs that are present.
+# Neither response includes the RFC 9728 WWW-Authenticate header by default.
+#
+# This filter inserts a Lua HTTP filter that adds WWW-Authenticate to 401 and 403
+# responses so that compliant clients can follow the RFC 9728 discovery chain.
+#
+# Note on 403 vs 401 for missing JWT:
+#   Istio's RequestAuthentication does not reject missing tokens (only validates
+#   tokens that ARE present). Requests with no token pass JWT authn and hit the
+#   AuthorizationPolicy DENY path → 403. Istio always returns 403 for denied
+#   requests; the 401/403 distinction requires additional gateway-level logic and
+#   is a known Phase 2+ gap. Status checks accept 403 with WWW-Authenticate as
+#   a compliant RFC 9728 auth challenge.
+#
+# ⚠️  EnvoyFilter is an escape hatch. Long-term: expose this header via a
+#     Gateway-level response policy once the project is behind an Istio Gateway.
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: mcp-rfc9728-www-authenticate
+  namespace: mcp-presidio
+spec:
+  workloadSelector:
+    labels:
+      app.kubernetes.io/name: mcp-presidio-sensitivity
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+              subFilter:
+                name: envoy.filters.http.jwt_authn
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            default_source_code:
+              inline_string: |
+                function envoy_on_response(response_handle)
+                  local status = tonumber(response_handle:headers():get(":status"))
+                  if status == 401 or status == 403 then
+                    response_handle:headers():add(
+                      "WWW-Authenticate",
+                      'Bearer resource_metadata="http://localhost:8000/.well-known/oauth-protected-resource"'
+                    )
+                  end
+                end

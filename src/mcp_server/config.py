@@ -15,30 +15,17 @@ import os
 
 # ---------------------------------------------------------------------------
 # OAuth / OIDC configuration
+#
+# JWT validation is handled by the Istio/Envoy sidecar (DEC-003).
+# ISSUER_URL is retained for the RFC 9728 Protected Resource Metadata endpoint.
 # ---------------------------------------------------------------------------
 
-# OIDC Discovery URL — used to derive JWKS URI and issuer at runtime.
-# The discovery document is TTL-cached; JWKS URI and issuer are never
-# hardcoded.
-OIDC_DISCOVERY_URL: str = os.environ.get(
-    "OIDC_DISCOVERY_URL",
-    "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local/.well-known/openid-configuration",
-)
-
 # Issuer URL — exposed in Protected Resource Metadata (/.well-known/…) and
-# startup logging.  Token validation derives the issuer from OIDC discovery
-# rather than this value; keeping it here avoids modifying main.py.
+# startup logging. Envoy's RequestAuthentication CRD also references this.
 ISSUER_URL: str = os.environ.get(
     "ISSUER_URL",
     "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local",
 )
-
-# Expected audience — the `aud` claim in incoming JWTs must include this value.
-AUDIENCE: str = os.environ.get("AUDIENCE", "mcp-presidio-server")
-
-# JWKS cache TTL in seconds (default: 5 minutes).
-# Reused by the discovery module for its own TTL cache.
-JWKS_CACHE_TTL_SECONDS: int = int(os.environ.get("JWKS_CACHE_TTL_SECONDS", 300))
 
 # ---------------------------------------------------------------------------
 # Presidio worker backend

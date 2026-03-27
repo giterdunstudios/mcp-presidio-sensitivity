@@ -24,11 +24,10 @@ resources:
 # MCP server configuration (injected as environment variables via ConfigMap)
 # ---------------------------------------------------------------------------
 config:
-  oidcDiscoveryUrl: "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local/.well-known/openid-configuration"
+  # issuerUrl retained for RFC 9728 Protected Resource Metadata endpoint.
+  # JWT validation, audience check, and JWKS caching handled by Envoy (DEC-003).
   issuerUrl: "http://keycloak.mcp-presidio.svc.cluster.local:8080/realms/mcp-local"
-  audience: "mcp-presidio-server"
   workerUrl: "http://presidio-worker.mcp-presidio.svc.cluster.local:8080"
-  jwksCacheTtlSeconds: 300
   maxPayloadBytes: 1048576
   workerTimeoutSeconds: "10.0"
   serverResourceUrl: "http://mcp-presidio-sensitivity.mcp-presidio.svc.cluster.local:8000"

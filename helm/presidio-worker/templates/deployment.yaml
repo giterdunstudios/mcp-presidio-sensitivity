@@ -14,6 +14,11 @@ spec:
     metadata:
       labels:
         {{- include "presidio-worker.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Istio sidecar injection — enables mTLS for MCP→Worker traffic (DEC-001/DEC-003).
+        # Worker receives no direct external traffic; sidecar provides identity for
+        # mesh policy enforcement only.
+        sidecar.istio.io/inject: "true"
     spec:
       # -----------------------------------------------------------------
       # Pod security — non-root, no privilege escalation

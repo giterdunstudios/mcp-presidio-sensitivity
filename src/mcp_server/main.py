@@ -3,25 +3,25 @@ MCP server entrypoint.
 
 Architecture:
   - FastAPI application hosts all endpoints.
-  - JWT middleware validates Bearer tokens before any business logic executes.
+  - Istio/Envoy sidecar handles JWT validation and scope enforcement (DEC-003).
+  - RequestContextMiddleware extracts the caller subject forwarded by Envoy
+    and generates a correlation ID for request tracing.
   - MCP SDK (FastMCP) handles tool registration and MCP protocol framing.
   - The MCP SDK app is mounted on a sub-path of the FastAPI router.
-  - Protected endpoints: /mcp (MCP SDK app mount)
+  - Protected endpoints: /mcp (Envoy enforces auth before the app sees these)
   - Unprotected endpoints: GET /health, GET /.well-known/oauth-protected-resource
 
 Request flow:
-  1. Request arrives at FastAPI
-  2. JWTAuthMiddleware fires:
-     a. Skip check for exempt paths (/health, /.well-known/...)
-     b. Extract and validate Bearer JWT (raises 401 on failure)
-     c. Check required scope (raises 403 on scope mismatch)
-     d. Inject claims into request.state for downstream access
-  3. MCP SDK processes the tool invocation
-  4. Tool handler (tools/classify.py) calls the Presidio worker
-  5. Response returned to caller
+  1. Request arrives at the Envoy sidecar
+  2. Envoy validates Bearer JWT (RequestAuthentication CRD)
+  3. Envoy enforces scope via AuthorizationPolicy CRD
+  4. Envoy forwards x-jwt-subject header to the app
+  5. RequestContextMiddleware injects correlation_id and caller_subject
+  6. MCP SDK processes the tool invocation
+  7. Tool handler (tools/classify.py) calls the Presidio worker
+  8. Response returned to caller
 
 Security constraints non-negotiable at this layer:
-  - Token validation runs BEFORE request body is read for any protected path.
   - Caller's Authorization header is stripped before any call to the backend.
   - No payload content in any log line.
   - Correlation ID is generated for every request and forwarded to the worker.
@@ -42,14 +42,6 @@ from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import config
-from auth.errors import (
-    TokenInvalidError,
-    TokenMissingError,
-    build_401_response,
-    build_403_response,
-)
-from auth.token_verifier import verify_token
-from authorization.policy import is_authorized
 from audit.trail import write_audit_record
 from backend.worker_client import WorkerError, call_worker
 from observability.logging import configure_logging, log_request
@@ -136,7 +128,7 @@ async def classify_payload_sensitivity(
         - matched_categories, entity_summary, decision
         - confidence_summary, policy_profile, detector_version, timestamp
     """
-    # Retrieve context vars injected by JWT middleware.
+    # Retrieve context vars injected by RequestContextMiddleware.
     # Fallbacks fire only when called outside the middleware context (e.g. tests).
     correlation_id = _current_correlation_id.get(str(uuid.uuid4()))
     caller_subject = _current_caller_subject.get("unknown")
@@ -200,9 +192,9 @@ async def lifespan(app: FastAPI):
         "MCP server starting",
         extra={
             "issuer_url": config.ISSUER_URL,
-            "audience": config.AUDIENCE,
             "worker_url": config.WORKER_URL,
             "port": config.PORT,
+            "auth_mode": "istio-envoy",
         },
     )
     async with mcp._session_manager.run():
@@ -224,62 +216,41 @@ app = FastAPI(
 )
 
 # ---------------------------------------------------------------------------
-# JWT authentication middleware
+# Request context middleware
+#
+# JWT validation and scope enforcement are handled by the Istio/Envoy sidecar
+# (DEC-003). This middleware is responsible only for:
+#   - Generating a correlation_id for request tracing
+#   - Extracting the caller subject from x-jwt-subject (forwarded by Envoy's
+#     JWT authn filter via outputClaimToHeaders)
+#   - Injecting both into context vars for downstream access
 # ---------------------------------------------------------------------------
 
 
-class JWTAuthMiddleware(BaseHTTPMiddleware):
+class RequestContextMiddleware(BaseHTTPMiddleware):
     """
-    Starlette middleware that validates Bearer JWTs on every protected request.
+    Lightweight request context middleware.
 
-    Exempt paths (no auth required):
-      - GET /health
-      - GET /.well-known/oauth-protected-resource
-
-    All other paths require a valid Bearer JWT.
-
-    For MCP SDK paths the required scope is tools:classify.submit.
-
-    Token validation runs BEFORE the request body is read (middleware fires
-    before route handlers, satisfying the "401 before any business logic"
-    requirement).
+    Auth is handled upstream by Envoy. This middleware injects the
+    caller identity forwarded by Envoy and generates a correlation ID.
     """
-
-    EXEMPT_PATHS: frozenset[str] = frozenset(
-        {"/health", "/.well-known/oauth-protected-resource", "/metrics"}
-    )
 
     async def dispatch(self, request: Request, call_next):
         start_time = time.monotonic()
         correlation_id = str(uuid.uuid4())
 
-        # Inject correlation_id into context var for tool handler access
         token = _current_correlation_id.set(correlation_id)
-        caller_subject_token = _current_caller_subject.set("unknown")
 
-        # Store on request state for use in route handlers
+        # Envoy forwards the validated JWT sub claim as x-jwt-subject
+        # via RequestAuthentication outputClaimToHeaders configuration.
+        caller_subject = request.headers.get("x-jwt-subject", "unknown")
+        caller_subject_token = _current_caller_subject.set(caller_subject)
+
         request.state.correlation_id = correlation_id
-        request.state.caller_subject = "anonymous"
-        request.state.auth_decision = "pending"
+        request.state.caller_subject = caller_subject
 
         path = request.url.path
 
-        # ------------------------------------------------------------------
-        # Exempt paths — no auth required
-        # ------------------------------------------------------------------
-        if path in self.EXEMPT_PATHS or path.rstrip("/") in self.EXEMPT_PATHS:
-            request.state.auth_decision = "exempt"
-            # Only count non-infrastructure exempt paths to avoid probe noise
-            if path not in ("/health", "/metrics"):
-                AUTH_DECISIONS.labels(outcome="exempt").inc()
-            response = await call_next(request)
-            _current_correlation_id.reset(token)
-            _current_caller_subject.reset(caller_subject_token)
-            return response
-
-        # ------------------------------------------------------------------
-        # Protected paths — span covers auth + forwarding
-        # ------------------------------------------------------------------
         with get_tracer().start_as_current_span(
             "http.request",
             kind=SpanKind.SERVER,
@@ -287,87 +258,8 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             span.set_attribute("http.path", path)
             span.set_attribute("http.method", request.method)
             span.set_attribute("correlation_id", correlation_id)
-
-            # --------------------------------------------------------------
-            # Token validation
-            # --------------------------------------------------------------
-            try:
-                claims = verify_token(request.headers.get("Authorization"))
-            except TokenMissingError:
-                span.set_status(StatusCode.ERROR, "missing token")
-                AUTH_DECISIONS.labels(outcome="deny_401").inc()
-                duration_ms = (time.monotonic() - start_time) * 1000
-                log_request(
-                    logger=logger,
-                    correlation_id=correlation_id,
-                    caller_subject="anonymous",
-                    tool=path,
-                    auth_decision="deny-401",
-                    duration_ms=duration_ms,
-                )
-                _current_correlation_id.reset(token)
-                _current_caller_subject.reset(caller_subject_token)
-                return build_401_response("invalid_token")
-            except TokenInvalidError:
-                span.set_status(StatusCode.ERROR, "invalid token")
-                AUTH_DECISIONS.labels(outcome="deny_401").inc()
-                duration_ms = (time.monotonic() - start_time) * 1000
-                log_request(
-                    logger=logger,
-                    correlation_id=correlation_id,
-                    caller_subject="anonymous",
-                    tool=path,
-                    auth_decision="deny-401",
-                    duration_ms=duration_ms,
-                )
-                _current_correlation_id.reset(token)
-                _current_caller_subject.reset(caller_subject_token)
-                return build_401_response("invalid_token")
-
-            caller_subject = claims.get("_subject", "unknown")
-            scopes: frozenset[str] = claims.get("_scopes", frozenset())
-
-            request.state.caller_subject = caller_subject
-            request.state.claims = claims
             span.set_attribute("caller_subject", caller_subject)
 
-            # Update caller_subject context var now that we have the real subject
-            _current_caller_subject.reset(caller_subject_token)
-            caller_subject_token = _current_caller_subject.set(caller_subject)
-
-            # --------------------------------------------------------------
-            # Scope authorization — classify tool requires tools:classify.submit
-            # MCP SDK routes its tool calls through /mcp
-            # --------------------------------------------------------------
-            # Determine which tool is being called for scope enforcement.
-            # MCP routes all tool invocations through the /mcp path; the
-            # required scope for all tool calls is tools:classify.submit.
-            if path.startswith("/mcp"):
-                authorized, required_scope = is_authorized(
-                    "classify_payload_sensitivity", scopes
-                )
-                if not authorized:
-                    span.set_status(StatusCode.ERROR, "insufficient scope")
-                    AUTH_DECISIONS.labels(outcome="deny_403").inc()
-                    duration_ms = (time.monotonic() - start_time) * 1000
-                    log_request(
-                        logger=logger,
-                        correlation_id=correlation_id,
-                        caller_subject=caller_subject,
-                        tool="classify_payload_sensitivity",
-                        auth_decision="deny-403",
-                        duration_ms=duration_ms,
-                    )
-                    _current_correlation_id.reset(token)
-                    _current_caller_subject.reset(caller_subject_token)
-                    return build_403_response(required_scope)
-
-            request.state.auth_decision = "allow"
-            AUTH_DECISIONS.labels(outcome="allow").inc()
-
-            # --------------------------------------------------------------
-            # Forward to route handler
-            # --------------------------------------------------------------
             response = await call_next(request)
             span.set_attribute("http.status_code", response.status_code)
 
@@ -375,6 +267,11 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             REQUEST_DURATION.labels(
                 path=path, status_code=str(response.status_code)
             ).observe(duration_ms / 1000)
+
+            # All requests reaching the app have been authorized by Envoy.
+            # Track as allowed; denied requests are counted by Envoy metrics.
+            if path not in ("/health", "/metrics"):
+                AUTH_DECISIONS.labels(outcome="allow").inc()
 
             worker_status = getattr(request.state, "worker_status", None)
 
@@ -393,7 +290,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return response
 
 
-app.add_middleware(JWTAuthMiddleware)
+app.add_middleware(RequestContextMiddleware)
 
 # ---------------------------------------------------------------------------
 # Unprotected endpoints
@@ -450,6 +347,6 @@ app.mount("/metrics", _prometheus_app())
 # registers its endpoint at /mcp, making the effective path /mcp.
 # Explicit routes (/health, /.well-known/...) are defined above and matched
 # first by FastAPI's router before the catch-all mount is reached.
-# The JWT middleware intercepts all requests before the MCP SDK sees them.
+# Envoy enforces JWT auth and scope on /mcp before the app sees the request.
 
 app.mount("/", mcp_app)

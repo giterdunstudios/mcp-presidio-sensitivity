@@ -17,14 +17,13 @@ import sys
 os.environ.setdefault("WORKER_URL", "http://test-worker:8080")
 os.environ.setdefault("WORKER_TIMEOUT_SECONDS", "10.0")
 
-# OIDC — point at a non-existent issuer; tests mock verify_token directly
-os.environ.setdefault("OIDC_DISCOVERY_URL", "http://test-keycloak/realms/test/.well-known/openid-configuration")
+# ISSUER_URL is used by the RFC 9728 discovery endpoint
 os.environ.setdefault("ISSUER_URL", "http://test-keycloak/realms/test")
-os.environ.setdefault("AUDIENCE", "test-audience")
 
-# Rate limiting — low limit so tests can hit it quickly
-os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
-os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "3")
+# Note: OIDC_DISCOVERY_URL, AUDIENCE, JWKS_CACHE_TTL_SECONDS removed —
+# JWT validation is now handled by Istio/Envoy sidecar (DEC-003).
+# Note: RATE_LIMIT_ENABLED, RATE_LIMIT_PER_MINUTE removed —
+# rate limiting moves to Envoy rate limit filter (DEC-003).
 
 # Service identity
 os.environ.setdefault("SERVICE_VERSION", "0.0.0-test")

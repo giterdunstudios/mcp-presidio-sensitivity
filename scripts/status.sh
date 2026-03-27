@@ -14,7 +14,7 @@
 #   - Keycloak OIDC discovery endpoint reachable and returning valid JSON
 #   - Worker and MCP server /health endpoints returning ok
 #   - Token acquisition succeeds and TTL matches DEC-002 (≤ 60s)
-#   - RFC 9728: 401 carries resource_metadata in WWW-Authenticate
+#   - RFC 9728: auth failure (401 or 403) carries resource_metadata in WWW-Authenticate
 #   - RFC 9728: /.well-known/oauth-protected-resource returns valid document
 #
 # Usage:
@@ -140,9 +140,11 @@ WWW_AUTH=$(curl -si --max-time 5 -X POST http://localhost:8000/mcp \
   | grep -i "^www-authenticate:" | tr -d '\r')
 
 if echo "$WWW_AUTH" | grep -q "resource_metadata"; then
-  pass "401 WWW-Authenticate contains resource_metadata pointer"
+  pass "Auth challenge WWW-Authenticate contains resource_metadata pointer (RFC 9728 §5)"
 else
-  fail "401 WWW-Authenticate missing resource_metadata (RFC 9728 §5 non-compliant)"
+  # Istio AuthorizationPolicy returns 403 (not 401) for missing JWT — known Phase 2 behavior.
+  # The WWW-Authenticate header is injected by the Lua EnvoyFilter on both 401 and 403 responses.
+  fail "Auth challenge WWW-Authenticate missing resource_metadata (RFC 9728 §5 non-compliant)"
 fi
 
 META=$(curl -sf --max-time 5 http://localhost:8000/.well-known/oauth-protected-resource 2>/dev/null)

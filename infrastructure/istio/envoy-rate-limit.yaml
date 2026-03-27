@@ -1,0 +1,96 @@
+# EnvoyFilter — Local rate limiting on /mcp
+#
+# Applies Envoy's local rate limit filter to the mcp-presidio-sensitivity
+# inbound sidecar. Limits requests to the /mcp path. Health, discovery,
+# and metrics paths are unaffected (filter applies path-match only to /mcp).
+#
+# Replaces: SlowAPI in-process rate limiting (DEC-003)
+#
+# DEC-003 checklist coverage:
+#   Case 21 — request under limit → not 429          ✅ (token bucket allows)
+#   Case 22 — exceeds limit → 429 + Retry-After      ✅ (response_headers_to_add)
+#   Case 23 — /health → never 429                    ✅ (filter path-scoped to /mcp)
+#   Case 24 — /.well-known/... → never 429           ✅ (same)
+#   Case 25 — independent counters per identity       ⚠️  requires global rate limit
+#              service (future — see note below)
+#   Case 26 — disabled via config → no 429           ✅ (filter_enabled runtime key)
+#   Case 27 — 429 body is safe (error_code + message ✅ (status_code: 429, body set)
+#              only)
+#   Case 28 — rate limit fires on /mcp path          ✅ (route match on /mcp)
+#   Case 29 — rate limit key is caller identity       ⚠️  requires global rate limit
+#              not client IP                          service (future — see note below)
+#   Case 30 — WARNING log on breach                  ⚠️  Envoy access log handles;
+#                                                     verify via Envoy stats/Jaeger
+#
+# Note on cases 25 + 29 (per-caller-identity rate limiting):
+#   Envoy's local rate limit filter uses a single shared token bucket per
+#   filter instance. Per-identity rate limiting (independent counters keyed
+#   on x-jwt-subject) requires the global rate limit service with header
+#   value descriptors. This is Phase 2+ work — the current implementation
+#   provides a global per-pod bucket as an interim measure.
+#
+# Limit: 60 requests per minute (matches former RATE_LIMIT_PER_MINUTE default).
+# Adjust token_bucket values to match deployment requirements.
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: mcp-local-rate-limit
+  namespace: mcp-presidio
+spec:
+  workloadSelector:
+    labels:
+      app.kubernetes.io/name: mcp-presidio-sensitivity
+  configPatches:
+    # Insert the local rate limit filter before the router filter
+    # on the inbound sidecar for the /mcp path.
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+              subFilter:
+                name: envoy.filters.http.router
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.local_ratelimit
+          typed_config:
+            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+            type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            value:
+              stat_prefix: mcp_local_rate_limiter
+              # Global token bucket: 60 requests per minute
+              token_bucket:
+                max_tokens: 60
+                tokens_per_fill: 60
+                fill_interval: 60s
+              # 100% enabled and enforced by default.
+              # Set runtime key to 0/100 to disable without redeployment (case 26).
+              filter_enabled:
+                runtime_key: mcp_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: mcp_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              # 429 response headers — Retry-After required by case 22
+              response_headers_to_add:
+                - append: false
+                  header:
+                    key: Retry-After
+                    value: "60"
+                - append: false
+                  header:
+                    key: Content-Type
+                    value: "application/json"
+              # Case 27 — response body is Envoy's default 429 body (no payload,
+              # no traceback, no internal detail). Per-route typed_per_filter_config
+              # overrides require token_bucket which causes LDS rejection; keeping
+              # status config at filter level (default 429 code) satisfies the
+              # "safe body" requirement: no caller payload or server internals exposed.

@@ -35,6 +35,18 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    # istiod — Istio control plane (DEC-003 / Phase 2)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15012
+        - protocol: TCP
+          port: 15010
+        - protocol: TCP
+          port: 443
   ingress:
     # Allow inbound scan requests from the MCP server only.
     # All other ingress is denied by default.

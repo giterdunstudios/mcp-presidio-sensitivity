@@ -6,11 +6,10 @@ metadata:
   labels:
     {{- include "mcp-presidio-sensitivity.labels" . | nindent 4 }}
 data:
-  OIDC_DISCOVERY_URL: {{ .Values.config.oidcDiscoveryUrl | quote }}
+  # ISSUER_URL retained for RFC 9728 Protected Resource Metadata endpoint.
+  # JWT validation, audience check, and JWKS caching handled by Envoy (DEC-003).
   ISSUER_URL: {{ .Values.config.issuerUrl | quote }}
-  AUDIENCE: {{ .Values.config.audience | quote }}
   WORKER_URL: {{ .Values.config.workerUrl | quote }}
-  JWKS_CACHE_TTL_SECONDS: {{ .Values.config.jwksCacheTtlSeconds | int | quote }}
   MAX_PAYLOAD_BYTES: {{ .Values.config.maxPayloadBytes | int | quote }}
   WORKER_TIMEOUT_SECONDS: {{ .Values.config.workerTimeoutSeconds | quote }}
   SERVER_RESOURCE_URL: {{ .Values.config.serverResourceUrl | quote }}
