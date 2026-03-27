@@ -41,6 +41,13 @@ set -euo pipefail
 
 NAMESPACE="mcp-presidio"
 TEST_POD="netpol-test-pod"
+
+# Always clean up the test pod on exit — handles crashes, early exits, and
+# the case where a previous run left the pod behind.
+cleanup() {
+    kubectl delete pod "$TEST_POD" -n "$NAMESPACE" --ignore-not-found &>/dev/null || true
+}
+trap cleanup EXIT
 WORKER_SVC="presidio-worker.${NAMESPACE}.svc.cluster.local"
 MCP_SVC="mcp-presidio-sensitivity.${NAMESPACE}.svc.cluster.local"
 KEYCLOAK_SVC="keycloak.${NAMESPACE}.svc.cluster.local"
@@ -103,6 +110,17 @@ if ! kubectl get namespace "$NAMESPACE" &>/dev/null; then
     exit 1
 fi
 
+# Wait for any Terminating pods to clear before capturing pod names.
+# A rollout leaves the old pod Terminating briefly; grabbing it would cause
+# case 15 (and others) to fail on a pod that no longer exists.
+for i in $(seq 1 30); do
+    if ! kubectl get pods -n "$NAMESPACE" 2>/dev/null | grep -q Terminating; then
+        break
+    fi
+    echo -e "  ${DIM}--${RESET}  Waiting for Terminating pods to clear... (${i})"
+    sleep 2
+done
+
 MCP_POD=$(mcp_pod)
 if [[ -z "$MCP_POD" ]]; then
     echo -e "${RED}MCP server pod not found in $NAMESPACE${RESET}"
@@ -124,12 +142,24 @@ pass "Worker pod found: $WORKER_POD"
 
 header "Deploying test pod (non-MCP identity)"
 
+# Delete any leftover test pod from a previous run before (re)creating it.
+kubectl delete pod "$TEST_POD" -n "$NAMESPACE" --ignore-not-found &>/dev/null || true
+# Brief wait in case the pod is stuck Terminating from a previous run.
+kubectl wait pod/"$TEST_POD" -n "$NAMESPACE" --for=delete --timeout=15s &>/dev/null || true
+
+# sidecar.istio.io/inject: "false" — this pod intentionally has no Istio
+# sidecar; it represents a non-mesh caller testing NetworkPolicy enforcement.
+# Without this annotation the namespace-level injection would add a sidecar,
+# making the pod part of the mesh and causing ready=1/2 wait flakiness.
 kubectl run "$TEST_POD" \
     --image=busybox:1.36 \
     --restart=Never \
     --namespace="$NAMESPACE" \
-    --overrides='{"spec":{"containers":[{"name":"netpol-test","image":"busybox:1.36","command":["sleep","300"]}]}}' \
-    2>/dev/null || true
+    --overrides='{
+      "metadata": {"annotations": {"sidecar.istio.io/inject": "false"}},
+      "spec": {"containers": [{"name":"netpol-test","image":"busybox:1.36","command":["sleep","300"]}]}
+    }' \
+    2>/dev/null
 
 kubectl wait pod/"$TEST_POD" -n "$NAMESPACE" --for=condition=Ready --timeout=30s &>/dev/null
 pass "Test pod ready"
@@ -271,14 +301,6 @@ if [[ -n "$MCP_NETPOL" ]]; then
 else
     skip "Case 20: MCP server NetworkPolicy not found — deployed with networkPolicy.enabled:false (or not yet deployed)"
 fi
-
-# ---------------------------------------------------------------------------
-# Cleanup
-# ---------------------------------------------------------------------------
-
-header "Cleanup"
-kubectl delete pod "$TEST_POD" -n "$NAMESPACE" --ignore-not-found &>/dev/null
-pass "Test pod removed"
 
 # ---------------------------------------------------------------------------
 # Summary

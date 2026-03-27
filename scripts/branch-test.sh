@@ -44,6 +44,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCK_FILE="${TMPDIR:-/tmp}/mcp-presidio-cluster.lock"
 LOCK_TIMEOUT=300   # seconds to wait before giving up
 
+# Tee all output to a timestamped log file so nothing is lost if the terminal
+# or tool truncates the stream. Path is printed before any work begins.
+LOG_FILE="${TMPDIR:-/tmp}/branch-test-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "Log: $LOG_FILE"
+
 FULL=false
 for arg in "$@"; do
   [[ "$arg" == "--full" ]] && FULL=true

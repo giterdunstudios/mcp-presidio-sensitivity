@@ -88,25 +88,37 @@ if ! k3d cluster list 2>/dev/null | grep -q "^$CLUSTER_NAME"; then
 fi
 
 # ---------------------------------------------------------------------------
-# Build
+# Build — output redirected to a temp log to avoid flooding the terminal.
+# On success: one summary line. On failure: last 40 lines of build log.
 # ---------------------------------------------------------------------------
 
+docker_build() {
+  local image="$1" dockerfile="$2" context="$3"
+  local buildlog
+  buildlog=$(mktemp)
+  log "Building $image (--no-cache) → log: $buildlog"
+  if docker build --no-cache -t "$image" -f "$dockerfile" "$context" \
+       >"$buildlog" 2>&1; then
+    log "$image built OK"
+  else
+    log "ERROR: $image build failed — last 40 lines:"
+    tail -40 "$buildlog" >&2
+    rm -f "$buildlog"
+    exit 1
+  fi
+  rm -f "$buildlog"
+}
+
 if $BUILD_MCP; then
-  log "Building $MCP_IMAGE (--no-cache)..."
-  docker build --no-cache \
-    -t "$MCP_IMAGE" \
-    -f "$PROJECT_ROOT/src/mcp_server/Dockerfile" \
+  docker_build "$MCP_IMAGE" \
+    "$PROJECT_ROOT/src/mcp_server/Dockerfile" \
     "$PROJECT_ROOT/src/mcp_server/"
-  log "$MCP_IMAGE built OK"
 fi
 
 if $BUILD_WORKER; then
-  log "Building $WORKER_IMAGE (--no-cache)..."
-  docker build --no-cache \
-    -t "$WORKER_IMAGE" \
-    -f "$PROJECT_ROOT/src/worker/Dockerfile" \
+  docker_build "$WORKER_IMAGE" \
+    "$PROJECT_ROOT/src/worker/Dockerfile" \
     "$PROJECT_ROOT/src/worker/"
-  log "$WORKER_IMAGE built OK"
 fi
 
 # ---------------------------------------------------------------------------
@@ -202,11 +214,10 @@ if $BUILD_MCP; then
 fi
 
 if $BUILD_WORKER; then
-  if curl -sf --max-time 5 http://localhost:8090/health | grep -q '"ok"'; then
-    log "  OK  Worker health"
-  else
-    fail "Worker /health did not return ok after rollout"
-  fi
+  # Worker is NetworkPolicy-restricted — not reachable via localhost:8090.
+  # kubectl rollout status (above) already confirmed the deployment is Ready,
+  # which means the kubelet liveness/readiness probes passed. No external check needed.
+  log "  OK  Worker health (confirmed via rollout status — external port is NetworkPolicy-restricted)"
 fi
 
 log ""
