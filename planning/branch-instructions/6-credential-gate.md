@@ -19,7 +19,12 @@ Create a standalone script that detects hardcoded default credentials and call i
 
 ## Acceptance criteria
 - [ ] New file `scripts/check-credentials.sh` created and marked executable (`chmod +x`)
-- [ ] Script scans `helm/mcp-server/values.local.yaml`, `helm/presidio-worker/values.local.yaml`, and `keycloak/` directory for known default values: `change-in-prod`, `test-agent-secret`, `admin` password patterns
+- [ ] Script scans the following paths for known default values: `change-in-prod`, `test-agent-secret`, `admin` password patterns:
+  - `helm/mcp-server/values.local.yaml`
+  - `helm/presidio-worker/values.local.yaml`
+  - `keycloak/` directory
+  - `infrastructure/keycloak-local.yaml` (sets `KC_BOOTSTRAP_ADMIN_PASSWORD: change-me-in-prod` as a Kubernetes Deployment env var)
+  - `helm/keycloak-values.local.yaml` (sets `adminPassword: change-me-in-prod`)
 - [ ] Default behaviour (no flags): prints findings with `file:line` references, exits 0 regardless of findings
 - [ ] `--strict` flag: exits 1 if any findings; exits 0 if clean
 - [ ] `scripts/rebuild.sh` calls `"$SCRIPT_DIR/check-credentials.sh"` (without `--strict`) early in the script — after the prerequisites check, before the docker build
@@ -42,7 +47,7 @@ Create a standalone script that detects hardcoded default credentials and call i
 - Implementation: standalone `scripts/check-credentials.sh` — NOT inline logic in `rebuild.sh`. Rebuild.sh calls the script in one line.
 - Default behaviour: non-blocking (exit 0 with findings printed). This means `rebuild.sh` continues even if credentials are found. The intention is to warn the developer without breaking the workflow.
 - `--strict` flag: exit 1 on any finding. Reserved for future CI enforcement. Do NOT add `--strict` to the `rebuild.sh` call.
-- Scan scope: `values.local.yaml` files and `keycloak/` only. These are the files that contain local dev credentials that must not reach production. The scan is not a general secrets scanner.
+- Scan scope: `values.local.yaml` files, `keycloak/`, `infrastructure/keycloak-local.yaml`, and `helm/keycloak-values.local.yaml`. These are the files that contain local dev credentials that must not reach production. The scan is not a general secrets scanner.
 
 ### Why non-blocking by default
 Production deployments do not use `values.local.yaml` — those files are local-only overrides. The `--strict` flag gives future CI pipelines a way to enforce clean production values files when those are added. For now, a visible warning in the rebuild output is sufficient.
