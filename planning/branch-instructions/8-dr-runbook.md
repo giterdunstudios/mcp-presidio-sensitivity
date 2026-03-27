@@ -22,8 +22,10 @@ Write a concise runbook that tells a developer exactly what to do when the local
 - [ ] Covers all five scenarios: k3d cluster gone (WSL2 restart), registry unreachable, pod crashlooping, Keycloak realm missing, Istio sidecar injection broken
 - [ ] Each scenario follows the format: symptom → diagnosis command(s) → recovery command(s)
 - [ ] Documents approximate time `setup-local.sh` takes from zero (wall clock, not just "a while")
-- [ ] Documents the canonical post-recovery sequence: `setup-local.sh` → `keycloak-admin.sh set-ttl 60` → `status.sh` → `branch-test.sh`
+- [ ] Documents the canonical post-recovery sequence: `setup-local.sh` → `kubectl apply -f infrastructure/istio/` → `kubectl label namespace mcp-presidio istio-injection=enabled --overwrite` → rolling restart of MCP server pod → `keycloak-admin.sh set-ttl 60` → `status.sh` → `./scripts/devtools-run.sh ./scripts/branch-test.sh`
+- [ ] States explicitly: container logs (including audit records) are destroyed on cluster teardown — there is no recovery path for records that existed only in stdout
 - [ ] File is readable end-to-end without referencing any external conversation or prior context
+- [ ] The post-recovery sequence, followed exactly from a cold k3d cluster, produces a passing `./scripts/status.sh` run (validation owner must confirm this is achievable, not just that the commands are present)
 
 ## Files to create / modify
 | File | Action | Notes |
@@ -59,7 +61,13 @@ No `branch-test.sh` run required — this is a documentation-only branch.
 ## Notes / constraints
 - The runbook is for a developer working on a fresh WSL2 session or returning after a machine restart. Assume they have all prerequisites installed (per CLAUDE.md) but the cluster may be gone.
 - WSL2 caveat: `newgrp docker` does not propagate to non-interactive subshells. `setup-local.sh` uses `sg docker -c ...` to handle this. Document this in the runbook so developers know why the script looks the way it does.
-- Istio sidecar injection failure: the most common cause is the namespace label `istio-injection=enabled` being absent after a cluster rebuild. Recovery: `kubectl label namespace mcp-presidio istio-injection=enabled` followed by rolling restart of all pods.
+- **Scenario 1 — k3d cluster gone:** Also covers the case where the cluster exists but Istio is not installed. `setup-local.sh` does NOT reinstall Istio or apply `infrastructure/istio/*.yaml`. After any full cluster rebuild, Istio manifests must be manually re-applied (`kubectl apply -f infrastructure/istio/`) before auth enforcement is active. Run `istioctl analyze` to diagnose Istio configuration issues.
+- **Scenario 2 — Registry unreachable:** Distinguish two sub-cases with different recovery commands: (a) `k3d-mcp-registry` container stopped — `docker start k3d-mcp-registry` is sufficient, no cluster rebuild needed; (b) registry deleted — requires full `setup-local.sh`. Diagnose with `docker ps --filter name=k3d-mcp-registry` (stopped shows, running shows with status Up; absent = deleted).
+- **Scenario 5 — Istio sidecar injection broken:** Scope this scenario to "namespace label missing — istiod is already running." If istiod is not installed (cluster just rebuilt), use Scenario 1 recovery path first. For label-only fix: `kubectl label namespace mcp-presidio istio-injection=enabled --overwrite` + rolling restart of MCP server pod.
+- **Data loss warning:** Audit records are written to container stdout. `setup-local.sh --teardown` destroys all audit records permanently — there is no recovery path. Document this prominently in the runbook introduction and in Scenario 1.
+- Add timing range for `setup-local.sh`: approximately 10–15 minutes cold (fresh image builds + spaCy model download); approximately 5 minutes with `--skip-build` if images already exist in the registry.
+- Add `istioctl analyze` as the recommended Phase 2 Istio diagnostic command.
+- If k3d/kubectl/helm are not on the host PATH, prefix all cluster management commands with `./scripts/devtools-run.sh`.
 - Do not speculate about Phase 3 failure modes. Scope is Phase 2 running system only.
 
 ---

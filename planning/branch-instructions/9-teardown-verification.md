@@ -19,7 +19,7 @@ Confirm that `./scripts/setup-local.sh --teardown` followed by `./scripts/setup-
 
 ## Acceptance criteria
 - [ ] Teardown completes without errors; `k3d cluster list` shows no `mcp-presidio` cluster afterwards
-- [ ] `k3d registry list` shows no `mcp-registry` after teardown (or it was deleted and recreated cleanly by the subsequent setup)
+- [ ] `k3d registry list` shows no `k3d-mcp-registry` after teardown (or it was deleted and recreated cleanly by the subsequent setup)
 - [ ] `./scripts/setup-local.sh` completes without errors after teardown
 - [ ] `./scripts/status.sh` — all checks green after fresh setup
 - [ ] `./scripts/devtools-run.sh ./scripts/branch-test.sh` — all 5 steps pass after fresh setup
@@ -54,9 +54,10 @@ docker ps --filter name=k3d
 
 # Step 3: Verify clean state
 k3d cluster list                    # must show NO mcp-presidio cluster
-k3d registry list                   # check for any lingering mcp-registry
+k3d registry list                   # must show NO k3d-mcp-registry
+kubectl config get-contexts | grep mcp-presidio  # expected: no output (context removed by k3d)
 docker ps --filter name=k3d         # check for any lingering k3d containers
-docker volume ls | grep k3d         # check for orphaned volumes
+docker volume ls | grep k3d         # check for orphaned volumes — expected: no output
 
 # Step 4: Fresh setup
 ./scripts/setup-local.sh
@@ -102,10 +103,11 @@ Record the output of each docker volume / docker ps check in the findings addend
 - Volumes: (docker volume ls filter output)
 
 **Post-teardown state:**
-- Cluster: (k3d cluster list output)
-- Registry: (k3d registry list output)
-- Orphaned containers: (docker ps filter output — none expected)
-- Orphaned volumes: (docker volume ls output — list any k3d-related)
+- Cluster: (k3d cluster list output — no `mcp-presidio` line expected)
+- Registry: (k3d registry list output — no `k3d-mcp-registry` line expected)
+- kubeconfig context: (kubectl config get-contexts | grep mcp-presidio output — no output expected)
+- Orphaned containers: (docker ps filter output — no output expected)
+- Orphaned volumes: (docker volume ls | grep k3d output — no output expected; list any lines if present)
 
 **Fresh setup duration (wall clock):**
 

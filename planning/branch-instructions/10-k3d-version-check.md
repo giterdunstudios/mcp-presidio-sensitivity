@@ -74,7 +74,13 @@ k3s version v1.30.4+k3s1 (default)
 
 Parse the first line. Extract the version number (strip the leading `v`):
 ```bash
-K3D_INSTALLED=$(k3d version 2>/dev/null | head -1 | grep -oP 'v\K[0-9]+\.[0-9]+\.[0-9]+')
+K3D_INSTALLED=$(k3d version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+```
+**Note:** Do NOT use `grep -oP` (PCRE). The devtools container runs Alpine Linux with BusyBox grep, which does not support `-P`. Use `grep -oE` instead — it works on BusyBox grep, GNU grep, and macOS BSD grep.
+
+After parsing, add an empty-string guard before the comparison:
+```bash
+[ -z "$K3D_INSTALLED" ] && { echo "[setup] ERROR: could not parse k3d version output. Run 'k3d version' manually." >&2; exit 1; }
 ```
 
 ### Version comparison with sort -V
@@ -93,7 +99,7 @@ if [ "$LOWER" = "$INSTALLED" ] && [ "$INSTALLED" != "$REQUIRED" ]; then
   exit 1
 elif [ "$INSTALLED" != "$REQUIRED" ]; then
   # installed > required
-  echo "WARNING: k3d version $INSTALLED is newer than the tested version $REQUIRED. Proceeding, but behaviour may differ."
+  echo "WARNING: k3d $INSTALLED is newer than tested version $REQUIRED. NetworkPolicy enforcement and cluster behavior may differ. Run ./scripts/validate-networkpolicy.sh after setup to confirm enforcement is intact."
 fi
 # else: installed = required, silent
 ```

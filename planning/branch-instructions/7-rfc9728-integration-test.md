@@ -82,8 +82,8 @@ Extract: token_endpoint
 ```
 POST <token_endpoint>
   grant_type=client_credentials
-  client_id=mcp-agent
-  client_secret=<from values.local.yaml or hardcoded for test>
+  client_id=test-agent-client
+  client_secret=test-agent-secret-change-in-prod
   scope=tools:classify.submit
 Expect: HTTP 200
 Expect: JSON body with "access_token"
@@ -137,7 +137,11 @@ Reference `scripts/auth-test.sh` for working curl patterns against this stack. K
 # Capture response headers and body separately
 HTTP_CODE=$(curl -s -o /tmp/response_body -w "%{http_code}" ...)
 BODY=$(cat /tmp/response_body)
-WWW_AUTH=$(curl -sI http://localhost:8000/mcp -X POST | grep -i "www-authenticate")
+# WWW-Authenticate is only set on a real POST — use -D to capture headers alongside body
+WWW_AUTH=$(curl -s -D - -o /dev/null -X POST \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  http://localhost:8000/mcp | grep -i "www-authenticate")
 ```
 
 ### Extracting resource_metadata from WWW-Authenticate
@@ -155,7 +159,7 @@ METADATA_URL=$(echo "$WWW_AUTH" | grep -oP 'resource_metadata="\K[^"]+')
 Use a minimal valid MCP tool call. Reference `scripts/classify.sh` or `scripts/demo.sh` for the correct JSON body format for `classify_payload_sensitivity`.
 
 ### Client credentials for Step 5
-The client ID and secret are in `helm/mcp-server/values.local.yaml`. Hardcoding them in the test script is acceptable for a local dev test. Add a comment noting these match `values.local.yaml`.
+The client ID is `test-agent-client` and the secret is `test-agent-secret-change-in-prod`. These are hardcoded in `scripts/auth-test.sh` and in `keycloak/realm-import/mcp-local-realm.json` — they are NOT in `helm/mcp-server/values.local.yaml`. Hardcoding them directly in the test script is acceptable for a local dev test. Add a comment citing `scripts/auth-test.sh` as the canonical reference.
 
 ### Step 1 note on 401 vs 403
 Istio's JWT authn filter returns 401 for a missing token when properly configured. If the filter is in PERMISSIVE mode or the request matches a bypass rule, behaviour may differ. Accept either 401 or 403 in Step 1 as valid. If neither is returned (e.g. 200), that is a genuine test failure — the auth boundary is not enforced.

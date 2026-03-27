@@ -19,9 +19,12 @@ Determine why the presidio-worker pod has accumulated 9+ restarts; document the 
 
 ## Acceptance criteria
 - [ ] Root cause identified and documented in this file as a findings addendum (see template at bottom)
-- [ ] If root cause is OOMKill: document memory usage pattern, propose resource limit adjustment as a new backlog item
-- [ ] If root cause is readiness/liveness probe misconfiguration: document and propose fix as new backlog item
-- [ ] If root cause is application crash: provide stack trace and escalate immediately to the council
+- [ ] If root cause is OOMKill: document memory usage pattern; propose raising the `resources.limits.memory` in `helm/presidio-worker/values.yaml` as a new backlog item (512Mi is a configured limit, not a hardware constraint — it can be increased)
+- [ ] If root cause is readiness/liveness probe misconfiguration: document specific probe config fields with current vs proposed values; open new backlog item
+- [ ] If root cause is application crash: provide full stack trace; open a council review session before committing findings — do not commit without council alignment
+- [ ] If root cause is tmpfs exhaustion: document `/tmp` usage vs 128Mi `sizeLimit` and Presidio scratch behavior; open new backlog item
+- [ ] If root cause is Istio sidecar init failure: document sidecar container logs and istiod state; open new backlog item
+- [ ] If root cause is Other: document the finding in full and open a new backlog item regardless of severity
 - [ ] No code changes on this branch — investigation and documentation only
 
 ## Files to create / modify
@@ -64,17 +67,21 @@ Run the following commands to gather evidence. Use `./scripts/devtools-run.sh ku
 ```
 
 Look for:
-- `OOMKilled` in the describe output (Last State section)
+- `OOMKilled` in the describe output (Last State section). Note: OOMKill exit code is 137. Memory limit is `512Mi` in `helm/presidio-worker/values.yaml`; spaCy `en_core_web_lg` alone is ~500MB resident, leaving limited headroom per-request. If OOMKill is confirmed, the fix is to raise the limit in `values.yaml` — this is a configured ceiling, not a hardware constraint, and there is room to increase it.
 - Probe failures (`Liveness probe failed`, `Readiness probe failed`)
 - Application-level errors in logs (Python tracebacks, spaCy model load failures)
-- `kubectl top pod` memory vs the limit in `helm/presidio-worker/values.yaml`
+- `ENOSPC` errors in tracebacks — indicates `/tmp` exhaustion (128Mi `sizeLimit` in `helm/presidio-worker/values.yaml`). This is distinct from OOMKill — `kubectl describe` will NOT show `OOMKilled`.
+- Istio sidecar init failures — check sidecar container: `./scripts/devtools-run.sh kubectl logs -c istio-proxy -n mcp-presidio <pod> --previous`
+- `kubectl top pod` memory vs the limit in `helm/presidio-worker/values.yaml`; if `kubectl top pod` returns "metrics not available", check `./scripts/devtools-run.sh kubectl get pods -n kube-system | grep metrics-server`
+
+**PII warning:** Before including previous-container log output in the findings addendum or sharing it externally, review it for payload content. If text payload appears in the logs (e.g. in a Python traceback from Presidio's analyzer), redact it and note the redaction in the findings.
 
 ## What the validation owner checks
 - Findings addendum is present and clearly states one of the three root cause categories
 - If OOMKill: memory numbers are cited with evidence (from `kubectl describe` Last State)
 - If probe misconfiguration: specific probe config fields cited with current vs proposed values
 - If application crash: full stack trace is included
-- Confirms no src/, helm/, or scripts/ files were modified on this branch
+- Confirms no src/, helm/, or scripts/ files were modified on this branch (`git diff HEAD~1 --name-only` should show only `planning/branch-instructions/3-worker-restart-investigation.md`)
 
 ## Notes / constraints
 - `branch-test.sh` is NOT required for this branch — there are no code changes to validate.
@@ -101,4 +108,4 @@ Look for:
 **Conclusion:**
 
 **Follow-up action:**
-(New backlog item # if applicable, or "no action required")
+(Proposed backlog item: description / priority / proposed owner — item numbers are assigned by the council reviewing these findings, not by the investigator)

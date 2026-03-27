@@ -19,11 +19,17 @@ Update `bom.json` to accurately reflect the Phase 2 running system — auth/ mod
 
 ## Acceptance criteria
 - [ ] `bom.json` components reflect current `src/mcp_server/` and `src/worker/` dependencies (cross-checked against `requirements.lock.txt` in both)
+- [ ] `annotated-doc==0.0.4` is added — it appears in both lock files but was absent from the previous `bom.json`
+- [ ] Every component's `purl` version field matches its `version` field (two known errors: `typing-extensions` PURL says `0.15.0` but version is `4.15.0`; `tqdm` PURL says `4.67.0` but version is `4.67.3`)
 - [ ] Components for deleted auth/ modules (`token_verifier`, `policy`) are removed
-- [ ] Infrastructure components updated: Istio, Envoy sidecar, EnvoyFilter CRDs noted as infrastructure components
+- [ ] Infrastructure components updated: all five Phase 2 Istio CRDs noted as infrastructure platform components — `RequestAuthentication`, `AuthorizationPolicy`, `PeerAuthentication`, `EnvoyFilter` (rate-limit), `EnvoyFilter` (WWW-Authenticate). Python library components come from lock files only; infrastructure platform components (Istio, Envoy, Keycloak, Jaeger, Prometheus, Grafana) are sourced from deployed manifests and images, not lock files.
+- [ ] `mcp-server` component description updated: remove stale "JWT auth middleware" language; reflect that Envoy sidecar owns JWT validation and scope enforcement, the app owns audit trail, classify tool, and RFC 9728 endpoint
+- [ ] `pyjwt` removed from `mcp-server.dependsOn` list as a direct dependency (it is now only transitive via the `mcp` library)
 - [ ] `serialNumber` is a freshly generated UUID (not the same as the previous one)
-- [ ] `metadata.timestamp` updated to today's date (2026-03-26 or the date of the actual update)
+- [ ] `metadata.timestamp` updated to the date of the actual update
+- [ ] `version` field incremented from `1` to `2` (material document revision per CycloneDX spec)
 - [ ] File is valid JSON (`python3 -c "import json; json.load(open('bom.json'))"` exits 0)
+- [ ] No duplicate `bom-ref` values: `python3 -c "import json; data=json.load(open('bom.json')); refs=[c['bom-ref'] for c in data['components']]; dupes=[r for r in refs if refs.count(r)>1]; print('Dupes:', dupes or 'none')"`
 
 ## Files to create / modify
 | File | Action | Notes |
@@ -73,6 +79,12 @@ python3 -c "import uuid; print('urn:uuid:' + str(uuid.uuid4()))"
 
 ## Notes / constraints
 - The CycloneDX specification for infrastructure components uses `type: "platform"` or `type: "container"`. Use whichever type the existing file uses for infrastructure entries. Do not introduce a new type category without a note in the PR.
-- If `bom.json` does not currently exist, create it from scratch following the CycloneDX 1.4 JSON schema. Check the existing file first with `cat bom.json` before assuming it exists.
-- Do not add components that are not in the lock files. The SBOM should reflect what is installed, not what might be added in the future.
-- Istio / Envoy version: check the deployed version with `./scripts/devtools-run.sh kubectl -n istio-system get pods -o wide` or check `infrastructure/` for the installed version reference.
+- The existing `bom.json` uses `specVersion: "1.6"`. Maintain CycloneDX 1.6 — the note "CycloneDX 1.4" anywhere is stale and incorrect.
+- Do not add Python library components that are not in the lock files. Infrastructure platform components (Istio, Keycloak, Jaeger, Prometheus, Grafana) are an explicit exception and are sourced from deployed manifests.
+- **Istio version is not pinned in any repo file.** Determine the deployed version from the live cluster:
+  ```bash
+  ./scripts/devtools-run.sh kubectl -n istio-system get deployment istiod \
+    -o jsonpath='{.spec.template.spec.containers[0].image}'
+  ```
+  If the cluster is unavailable, record the Istio component with a property `internal:version-source: not-pinned-in-repo` and whatever version was last observed.
+- Prefer a **full-file rewrite** of `bom.json` over surgical line-by-line edits. The components array is a flat list of 88+ entries — surgical edits carry trailing-comma and duplicate-entry risk that a full rewrite avoids. Write the complete updated file, then validate JSON syntax.

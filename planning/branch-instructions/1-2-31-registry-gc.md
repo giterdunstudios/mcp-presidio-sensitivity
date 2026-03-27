@@ -24,17 +24,20 @@ Add a registry garbage-collection script, document the registry management proce
 ### Item #1 — Registry GC script
 - [ ] New file `scripts/registry-gc.sh` created and marked executable (`chmod +x`)
 - [ ] Script connects to the k3d local registry and removes untagged/dangling layers using the registry garbage-collect command
-- [ ] Script lists registry images before and after with counts (or total size)
-- [ ] `--dry-run` flag: shows what the garbage-collect operation would do without executing it
-- [ ] Script is safe to run while the cluster is live
+- [ ] Script shows disk usage before and after (using `docker exec k3d-mcp-registry du -sh /var/lib/registry`) and tag counts before (using the Registry v2 API)
+- [ ] `--dry-run` flag: shows what the garbage-collect operation would do without executing it; must complete without error even when there is nothing to collect
+- [ ] `--prune-old-tags` flag (opt-in): adds `--delete-untagged` to `registry garbage-collect`. This reclaims old SHA-tagged manifests (the primary accumulation source), but will corrupt pulls for any pod still running an older SHA image. Script must: (1) require the operator to confirm all running pods reference the current SHA before this flag is used, and (2) print a prominent warning when `--prune-old-tags` is active
+- [ ] Script safety note: GC with default flags is safe when no concurrent `docker push` is in progress. The sweep phase can delete blobs referenced by an in-flight push before its manifest is stored. Script warns the operator if the registry appears to have recent push activity (check via `/v2/_catalog` freshness heuristic or simply document the constraint clearly)
 - [ ] Script has a `When to use` header comment block consistent with other scripts in `scripts/`
+- [ ] Script documents that GC is a manual developer responsibility — not automated
 
 ### Item #2 — Registry process documentation
 - [ ] `scripts/README.md` has a new "Registry management" section covering:
-  - When to run GC (after merging branches, before long sessions)
-  - How to check registry disk usage
-  - How image tags accumulate (one per git SHA per `rebuild.sh` run)
-  - Auth: local registry has no auth (note as known gap)
+  - When to run GC: when `docker exec k3d-mcp-registry du -sh /var/lib/registry` exceeds ~5GB, or after every 10+ rebuilds on an active branch
+  - How to check registry disk usage (the `du -sh` command)
+  - How image tags accumulate (one per git SHA per `rebuild.sh` run) and why default GC alone won't reclaim them (requires `--prune-old-tags`)
+  - Auth: local registry has no auth (note as known gap, tracked as #21)
+  - GC is a manual developer responsibility — not automated
 - [ ] `registry-gc.sh` entry added to the README with when-to-use guidance
 
 ### Item #31 — README accuracy review

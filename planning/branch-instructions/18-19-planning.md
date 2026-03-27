@@ -22,18 +22,21 @@ Produce a vertical templates phase proposal ready for council vote (#18), and an
 
 ### Item #18 — Vertical templates phase proposal
 - [ ] New file `planning/vertical-templates/phase-proposal.md` created
-- [ ] Proposes a concrete implementation phase: scope, sequencing relative to Phase 3, what is in vs out of scope for that phase
-- [ ] Flags the three open decisions that require council resolution before implementation can begin: (1) secrets/credentials vertical scope, (2) custom recognizer delivery mechanism, (3) geographic scoping for GDPR entities
-- [ ] Each open decision is clearly marked "requires council decision before implementation"
-- [ ] Document ends with a council vote request section that states what the council is being asked to approve
+- [ ] Opens by acknowledging what DEC-006 already established: `llm_default` is implemented; `general_pii` is the built-ins baseline; vertical templates (`hipaa_core`, `pci_dss`, etc.) are opt-in overlays for domain-aware callers. The phase proposal scopes the remaining vertical templates only — `llm_default` is NOT in scope, it is already done.
+- [ ] Presents the three open decisions from `findings.md` (OD-1, OD-2, OD-3) with their existing resolution text from `task_plan.md` and flags them as "requiring council ratification" — not as still-open questions (they have proposed resolutions, not unresolved questions)
+- [ ] Describes what `task_plan.md` Phases 3 and 4 (Worker Architecture Spec, Audit Trail/API Additions) cover and proposes their sequencing relative to the project Phase 3 (post-Istio) work — this is the concrete scheduling question the item is meant to answer
+- [ ] Includes a compliance disclaimer section: vertical template names are classification aids only — they do not confer compliance status on the caller's data processing
+- [ ] Document ends with a council vote request section listing discrete yes/no questions (not narrative), structured per `task_plan.md` Phase 5 gate: three sign-offs required (Security Lead, Tech Lead, Product Lead)
 
 ### Item #19 — SLO definition
 - [ ] New file `planning/slo-definition.md` created
-- [ ] Defines p50 and p99 latency targets for `classify_payload_sensitivity` (end-to-end, measured at the MCP server)
-- [ ] Defines error rate target (percentage of non-5xx responses over a rolling window)
-- [ ] Defines scan duration distribution target (specifically the worker `/scan` call, not the full round-trip)
-- [ ] Specifies measurement method for each target: which Prometheus metric name, which Grafana panel or query
-- [ ] If the cluster is accessible at `http://localhost:3000`, pull actual baseline numbers before setting targets; if not, document placeholder targets clearly marked as `[PLACEHOLDER — measure before finalising]`
+- [ ] Uses a table with columns: `SLO | Target | Metric | Query | Window | Aspirational/Measured | Baseline`
+- [ ] Defines p50 and p99 latency SLO for `classify_payload_sensitivity` using metric `mcp_request_duration_seconds{path="/mcp", status_code="200"}` (filter to successful MCP calls only)
+- [ ] Defines error rate SLO; notes that auth denial counts (401/403) are counted by the Envoy sidecar, not by `mcp_scan_errors_total` — these are not captured by app metrics
+- [ ] Defines scan duration SLO using metric `mcp_worker_call_duration_seconds` (the only worker-side timing proxy available from the MCP server — the worker's own `/metrics` cannot be scraped due to NetworkPolicy)
+- [ ] Defines an availability SLO placeholder, marked `[PLACEHOLDER — metric not yet instrumented]` with a note pointing to backlog item #39 (heartbeat metric or synthetic probe needed)
+- [ ] Rolling window duration is specified for each SLO (not left implicit)
+- [ ] If the cluster is accessible at `http://localhost:3000`, pull actual baseline numbers before setting targets; if not, use placeholder targets. Warm-path Presidio p99 latency is typically 200–500ms for short payloads — use this as a calibration point for placeholders
 - [ ] Notes which targets are aspirational vs measured
 
 ## Files to create / modify
@@ -54,8 +57,11 @@ All `src/`, `helm/`, `scripts/` files. All existing `planning/vertical-templates
 
 ### SLO context
 - The MCP server exposes a `/metrics` endpoint (Prometheus format). Grafana is deployed at `http://localhost:3000` (host port). Jaeger is at `http://localhost:16686`.
-- The Presidio worker exposes `/metrics` but Prometheus cannot scrape it directly due to NetworkPolicy (DEC-001). This means worker-specific metrics may require `kubectl exec` to retrieve — document this constraint in the SLO definition.
+- Real metric names (cross-check in `src/mcp_server/observability/metrics.py`): `mcp_request_duration_seconds` (labels: `path`, `status_code`), `mcp_worker_call_duration_seconds` (no labels), `mcp_scan_errors_total` (label: `error_code`).
+- The Presidio worker exposes `/metrics` but Prometheus cannot scrape it directly due to NetworkPolicy — `mcp_worker_call_duration_seconds` (recorded by the MCP server when it calls the worker) is the only proxy for worker scan time available from accessible metrics.
+- Auth denial counts (401/403) are counted by the Envoy sidecar, not the MCP server application. The error rate SLO must document this gap: app-side `mcp_scan_errors_total` does not capture auth failures.
 - Phase 2 Istio sidecar adds ~2–5ms latency overhead per hop. Account for this in target-setting.
+- Availability SLO requires a heartbeat metric or external synthetic probe (neither exists today — see backlog item #39). Mark availability target as `[PLACEHOLDER — metric not yet instrumented]`.
 
 ## How to validate
 
