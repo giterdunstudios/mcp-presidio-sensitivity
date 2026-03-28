@@ -11,14 +11,23 @@
 #     match the locally built sha256)
 #   - After merging a branch that changes application code or chart config
 #   Always use this instead of manual docker build + docker push to registry +
-#   rollout commands — it ensures --no-cache, correct image tags, helm config
-#   sync, and waits for rollout completion before returning.
+#   rollout commands — it ensures correct image tags, helm config sync, and
+#   waits for rollout completion before returning.
+#
+# Caching:
+#   Docker layer cache is used by default. The Dockerfile layer order ensures
+#   pip install and the spaCy model are only re-downloaded when
+#   requirements.lock.txt changes. Source-only changes hit the cache and
+#   complete in ~30s (worker) vs ~3m without cache.
+#   Set NO_CACHE=1 to force a full rebuild (e.g. after a base image update):
+#     NO_CACHE=1 ./scripts/rebuild.sh
 #
 # Usage:
 #   ./scripts/rebuild.sh              # rebuild both images (most common)
 #   ./scripts/rebuild.sh mcp          # MCP server only — src/mcp_server/ changed
 #   ./scripts/rebuild.sh worker       # worker only — src/worker/ changed
 #   ./scripts/rebuild.sh mcp worker   # explicit both
+#   NO_CACHE=1 ./scripts/rebuild.sh   # full rebuild, bypasses layer cache
 #
 # Prerequisites:
 #   - k3d cluster and registry running (./scripts/setup-local.sh completed)
@@ -126,14 +135,21 @@ fi
 # ---------------------------------------------------------------------------
 # Build — output redirected to a temp log to avoid flooding the terminal.
 # On success: one summary line. On failure: last 40 lines of build log.
+# Layer cache is used by default; set NO_CACHE=1 to bypass.
 # ---------------------------------------------------------------------------
+
+BUILD_FLAGS=()
+if [[ "${NO_CACHE:-0}" == "1" ]]; then
+  BUILD_FLAGS+=(--no-cache)
+  log "NO_CACHE=1 — bypassing layer cache"
+fi
 
 docker_build() {
   local image="$1" dockerfile="$2" context="$3"
   local buildlog
   buildlog=$(mktemp)
-  log "Building $image (--no-cache) → log: $buildlog"
-  if docker build --no-cache -t "$image" -f "$dockerfile" "$context" \
+  log "Building $image → log: $buildlog"
+  if docker build "${BUILD_FLAGS[@]}" -t "$image" -f "$dockerfile" "$context" \
        >"$buildlog" 2>&1; then
     log "$image built OK"
   else

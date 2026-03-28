@@ -22,9 +22,10 @@ WORKDIR /app
 # requirements.lock.txt is the pip-compiled exact-version lock file.
 # requirements.txt is the human-maintained constraints file (kept for
 # pip-compile regeneration — not used at build time).
-# Regenerate the lock file: docker run --rm -v $(pwd):/work python:3.11-slim \
-#   sh -c 'pip install -q pip-tools && cd /work && pip-compile --no-header \
-#          --strip-extras -o requirements.lock.txt requirements.txt'
+# Regenerate the lock file: docker run --rm -v $(pwd)/src/worker:/work python:3.11.15-slim \
+#   sh -c 'pip install -q pip-tools >/dev/null 2>&1 && pip-compile --no-header \
+#          --strip-extras -o /tmp/fresh.lock.txt /work/requirements.txt >/dev/null 2>&1 && \
+#          cp /tmp/fresh.lock.txt /work/requirements.lock.txt'
 COPY requirements.txt requirements.lock.txt ./
 
 RUN pip install --no-cache-dir --upgrade pip && \
