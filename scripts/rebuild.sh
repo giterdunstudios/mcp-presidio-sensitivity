@@ -87,6 +87,9 @@ if ! k3d cluster list 2>/dev/null | grep -q "^$CLUSTER_NAME"; then
   fail "k3d cluster '$CLUSTER_NAME' not found — run ./scripts/setup-local.sh first"
 fi
 
+# Credential scan (non-blocking — warn only)
+"$SCRIPT_DIR/check-credentials.sh"
+
 # ---------------------------------------------------------------------------
 # Build — output redirected to a temp log to avoid flooding the terminal.
 # On success: one summary line. On failure: last 40 lines of build log.
