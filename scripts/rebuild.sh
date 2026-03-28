@@ -145,16 +145,56 @@ docker_build() {
   rm -f "$buildlog"
 }
 
+# ---------------------------------------------------------------------------
+# Vulnerability scanning — runs after docker build, before docker push.
+# Requires Trivy to be installed on the host (optional — warn if absent).
+# Severity policy:
+#   CRITICAL → exit 1 (blocks push + deploy — do not ship critical CVEs to cluster)
+#   HIGH     → exit 0 (warn only — printed visibly but build continues)
+#   MEDIUM/LOW → not scanned (reduce noise)
+# Escape hatch (offline/airgap): set TRIVY_SKIP_DB_UPDATE=1 to pass
+# --skip-db-update to trivy and avoid the network call.
+# Install Trivy: https://aquasecurity.github.io/trivy/latest/getting-started/installation/
+# ---------------------------------------------------------------------------
+
+trivy_scan() {
+  local image="$1"
+  if ! command -v trivy &>/dev/null; then
+    log "WARNING: trivy not installed — skipping vulnerability scan for $image"
+    log "         Install: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"
+    return 0
+  fi
+  local trivy_extra_args=()
+  if [ "${TRIVY_SKIP_DB_UPDATE:-0}" = "1" ]; then
+    trivy_extra_args+=("--skip-db-update")
+  fi
+  log "Scanning $image for vulnerabilities (CRITICAL=block, HIGH=warn)..."
+  # CRITICAL check — block the build
+  if ! trivy image --severity CRITICAL --exit-code 1 --quiet "${trivy_extra_args[@]}" "$image"; then
+    fail "CRITICAL vulnerabilities found in $image — fix before deploying. Run: trivy image $image"
+  fi
+  # HIGH check — warn only
+  local high_count
+  high_count=$(trivy image --severity HIGH --exit-code 0 --quiet --format table "${trivy_extra_args[@]}" "$image" 2>/dev/null | grep -c HIGH || true)
+  if [ "$high_count" -gt 0 ]; then
+    log "WARNING: $high_count HIGH severity finding(s) in $image — review with: trivy image --severity HIGH $image"
+  else
+    log "$image scan clean (no CRITICAL or HIGH)"
+  fi
+}
+
 if $BUILD_MCP; then
   docker_build "$MCP_IMAGE" \
     "$PROJECT_ROOT/src/mcp_server/Dockerfile" \
     "$PROJECT_ROOT/src/mcp_server/"
+  trivy_scan "$MCP_IMAGE"
 fi
 
 if $BUILD_WORKER; then
   docker_build "$WORKER_IMAGE" \
     "$PROJECT_ROOT/src/worker/Dockerfile" \
     "$PROJECT_ROOT/src/worker/"
+  trivy_scan "$WORKER_IMAGE"
 fi
 
 # ---------------------------------------------------------------------------

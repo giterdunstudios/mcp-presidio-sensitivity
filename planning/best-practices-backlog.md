@@ -10,7 +10,7 @@ Coordination items are tracked in `planning/council-workboard.md`.
 When an item is proposed and no role schedules it for valid project reasons,
 it must be raised at the next council meeting per §5c.
 
-**Last updated:** 2026-03-27 (BP-026 spike added — devtools-run standardization)
+**Last updated:** 2026-03-28 (BP-024 complete — Trivy vulnerability scanning in rebuild.sh)
 
 ---
 
@@ -46,7 +46,7 @@ it must be raised at the next council meeting per §5c.
 | BP-030 | `setup-local.sh` smoke test race condition — worker port not yet ready | `proposed` | Engineering Practices Lead | Pre-Phase 2 | Smoke test checks `localhost:8090/health` immediately after Helm rollout completes. Worker passes Kubernetes readiness (internal healthcheck on port 8080) but external port is not yet accessible. Smoke test exits 1 spuriously. Fix: add retry loop (e.g. 3 attempts × 10s) before failing. Discovered 2026-03-27 during BP-011. |
 | BP-023 | Registry authentication gap — document as known gap | `proposed` | Engineering Practices Lead | Pre-Phase 3 | Unauthenticated pushes accepted — undocumented, not a deliberate decision. See tech-debt-backlog.md #21. |
 | BP-026 | Standardize devtools-run.sh as launcher for infra-heavy scripts | `scheduled` | Engineering Practices Lead | Pre-Phase 2 — HIGH PRIORITY | **Priority: HIGH.** Spike complete 2026-03-27. Recommendation: Option C (partial) — wrap setup-local.sh, rebuild.sh, status.sh, validate-networkpolicy.sh, branch-test.sh; leave test.sh, classify.sh, auth-test.sh, demo.sh, keycloak-admin.sh direct. **Implementation must use `/.dockerenv`-aware guard pattern** — do not remove tool checks outright; both direct and wrapped invocations must work simultaneously to enable parallel branch development and safe cut-over. Estimated effort: ~1 day. Demoable milestones defined. See `planning/spikes/devtools-standardization/findings.md`. |
-| BP-024 | Image vulnerability scanning (Trivy/Grype in rebuild.sh) | `proposed` | Security/Privacy Lead | Pre-Phase 3 | No CVE check for images handling PII data. See tech-debt-backlog.md #20. |
+| BP-024 | Image vulnerability scanning (Trivy/Grype in rebuild.sh) | `complete` | Security/Privacy Lead | Pre-Phase 3 | `trivy_scan()` added to rebuild.sh — runs after each `docker build`, before `docker push`. CRITICAL CVEs block (exit 1); HIGH CVEs warn (exit 0). Trivy not installed → warn and continue (optional tooling). `TRIVY_SKIP_DB_UPDATE=1` escape hatch for airgap environments. ✅ 2026-03-28 |
 | BP-025 | Image signing (Cosign) | `proposed` | Security/Privacy Lead | Pre-Phase 3 | Images are unsigned — no integrity guarantee. See tech-debt-backlog.md #28. |
 
 ---

@@ -49,6 +49,14 @@ restart` + `kubectl rollout status` sequence.
 ./scripts/rebuild.sh worker       # presidio-worker image only
 ```
 
+**Vulnerability scanning:** If [Trivy](https://aquasecurity.github.io/trivy/latest/getting-started/installation/)
+is installed on the host, `rebuild.sh` automatically scans each image after
+`docker build`, before `docker push`. CRITICAL CVEs block the build (exit 1).
+HIGH CVEs print a warning and the build continues. If Trivy is not installed,
+a warning is printed and the build proceeds normally — Trivy is optional tooling,
+not a prerequisite. To skip the DB update in an offline/airgap environment:
+`TRIVY_SKIP_DB_UPDATE=1 ./scripts/rebuild.sh`.
+
 ---
 
 ## check-credentials.sh
