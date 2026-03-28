@@ -10,7 +10,7 @@ Coordination items are tracked in `planning/council-workboard.md`.
 When an item is proposed and no role schedules it for valid project reasons,
 it must be raised at the next council meeting per §5c.
 
-**Last updated:** 2026-03-28 (BP-024 complete — Trivy vulnerability scanning in rebuild.sh)
+**Last updated:** 2026-03-28 (BP-031 added — .env-sourced credential prevention; BP-020 marked complete)
 
 ---
 
@@ -40,7 +40,8 @@ it must be raised at the next council meeting per §5c.
 | BP-017 | Registry process documentation in `scripts/README.md` | `proposed` | Engineering Practices Lead | Pre-Phase 3 | No documented policy for when/how to run GC. See tech-debt-backlog.md #2. |
 | BP-018 | SBOM refresh post-Phase 2 | `proposed` | Security/Privacy Lead | Post-Phase 2 | auth/ deleted, Istio/Envoy CRDs added — current SBOM doesn't reflect running system. See tech-debt-backlog.md #4. |
 | BP-019 | requirements.lock.txt sync check in test.sh or rebuild.sh | `complete` | Technical Implementation Lead | Pre-Phase 3 | Added check_lockfile_sync() to rebuild.sh; generates fresh lock to /tmp and diffs — fails fast before build. HOST_PROJECT_ROOT-aware for Docker-in-Docker. Both lock files refreshed (cryptography, googleapis-common-protos, requests bumped). Dockerfile stale COPY directives (auth/, authorization/) removed. ✅ 2026-03-27 |
-| BP-020 | Hardcoded credential pre-prod gate | `proposed` | Security/Privacy Lead | Pre-Phase 3 | CLIENT_SECRET / ADMIN_PASSWORD have change-in-prod values with no enforcement gate. See tech-debt-backlog.md #6. |
+| BP-020 | Hardcoded credential pre-prod gate | `complete` | Security/Privacy Lead | Pre-Phase 3 | `scripts/check-credentials.sh` added: scans `*.local.yaml`, `keycloak/`, `keycloak-local.yaml` for `change-in-prod`, `change-me-in-prod`, `test-agent-secret`, and bare `admin` passwords. Default: warn + exit 0. `--strict`: exit 1. Called by `rebuild.sh` before every build (non-blocking). ✅ 2026-03-27 |
+| BP-031 | Replace placeholder credentials with `.env`-sourced secrets | `proposed` | Security/Privacy Lead + Technical Implementation Lead | Pre-Phase 3 | BP-020 detects weak credentials after the fact; this prevents them. Replace literal `change-in-prod` values in `values.local.yaml` with env-var references injected at deploy time (`.env` file, gitignored, with a committed `.env.example` template). If `.env` is absent, deploy fails loudly rather than silently shipping dev credentials. Requires: `.env.example`, `envsubst` or Helm `--set` wiring in `rebuild.sh`/`setup-local.sh`, update `check-credentials.sh` scope. BP-020 (detection) is the pre-condition; this is the prevention layer. |
 | BP-021 | Helm chart version bump policy | `proposed` | Engineering Practices Lead | Pre-Phase 3 | Both charts frozen at 0.1.0 — can't correlate running pod to chart version in audit trail. See tech-debt-backlog.md #13. |
 | BP-022 | Helm test hooks | `complete` | Technical Implementation Lead | Pre-Phase 3 | Added test-mcp-health.yaml and test-worker-health.yaml Helm test Jobs. Worker NetworkPolicy updated to allow helm-test: worker label on port 8080. Both tests pass: `helm test mcp-presidio-sensitivity` and `helm test presidio-worker` — Phase: Succeeded. ✅ 2026-03-27 |
 | BP-030 | `setup-local.sh` smoke test race condition — worker port not yet ready | `proposed` | Engineering Practices Lead | Pre-Phase 2 | Smoke test checks `localhost:8090/health` immediately after Helm rollout completes. Worker passes Kubernetes readiness (internal healthcheck on port 8080) but external port is not yet accessible. Smoke test exits 1 spuriously. Fix: add retry loop (e.g. 3 attempts × 10s) before failing. Discovered 2026-03-27 during BP-011. |
