@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "presidio-worker.fullname" . }}-test-health"
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "presidio-worker.labels" . | nindent 4 }}
+    helm-test: worker
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-health
+      image: busybox
+      command:
+        - sh
+        - -c
+        - |
+          wget -qO- http://presidio-worker.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.service.port }}/health | grep -q '"ok"'

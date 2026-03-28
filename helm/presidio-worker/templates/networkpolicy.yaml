@@ -65,4 +65,12 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    # Helm test hooks — health check from test pod
+    - from:
+        - podSelector:
+            matchLabels:
+              helm-test: worker
+      ports:
+        - protocol: TCP
+          port: 8080
 {{- end }}
