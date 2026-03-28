@@ -111,6 +111,23 @@ wait_for_pods() {
 }
 
 # ---------------------------------------------------------------------------
+# k3d version check — must meet minimum floor before any k3d commands
+# ---------------------------------------------------------------------------
+
+REQUIRED_K3D_VERSION="5.7.4"
+INSTALLED_K3D_VERSION=$(k3d version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+
+[ -z "$INSTALLED_K3D_VERSION" ] && fail "could not parse k3d version output. Run 'k3d version' manually."
+
+LOWER_K3D=$(printf '%s\n%s\n' "$REQUIRED_K3D_VERSION" "$INSTALLED_K3D_VERSION" | sort -V | head -1)
+
+if [ "$LOWER_K3D" = "$INSTALLED_K3D_VERSION" ] && [ "$INSTALLED_K3D_VERSION" != "$REQUIRED_K3D_VERSION" ]; then
+  fail "k3d $INSTALLED_K3D_VERSION is below required minimum $REQUIRED_K3D_VERSION. Upgrade: https://k3d.io/stable/#installation"
+elif [ "$INSTALLED_K3D_VERSION" != "$REQUIRED_K3D_VERSION" ]; then
+  echo "[setup] WARNING: k3d $INSTALLED_K3D_VERSION is newer than pinned $REQUIRED_K3D_VERSION — may work, but untested. Run ./scripts/validate-networkpolicy.sh after setup to confirm enforcement is intact." >&2
+fi
+
+# ---------------------------------------------------------------------------
 # Teardown
 # ---------------------------------------------------------------------------
 
