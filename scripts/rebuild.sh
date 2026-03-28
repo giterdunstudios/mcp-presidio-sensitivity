@@ -91,6 +91,39 @@ fi
 "$SCRIPT_DIR/check-credentials.sh"
 
 # ---------------------------------------------------------------------------
+# Lock file sync check — fail fast if requirements.lock.txt is stale
+# ---------------------------------------------------------------------------
+
+check_lockfile_sync() {
+  local svc="$1" workdir="$2"
+  log "Checking $svc requirements.lock.txt sync..."
+  # pip-compile --check is not available in pip-tools 7.x; generate to temp and diff instead.
+  # When running inside a devtools container, volume mounts must use the HOST path (Docker socket
+  # pass-through — the host Docker daemon resolves paths on the host, not inside this container).
+  local host_workdir="${HOST_PROJECT_ROOT:+${HOST_PROJECT_ROOT}/src/${svc}}"
+  host_workdir="${host_workdir:-$workdir}"
+  if ! docker run --rm -v "$host_workdir:/work" python:3.11.15-slim \
+       sh -c 'pip install -q pip-tools >/dev/null 2>&1 &&
+              pip-compile --no-header --strip-extras -o /tmp/lock.check.txt /work/requirements.txt >/dev/null 2>&1 &&
+              diff -q /tmp/lock.check.txt /work/requirements.lock.txt >/dev/null 2>&1'; then
+    fail "$svc requirements.lock.txt is out of sync with requirements.txt.
+Regenerate with:
+  docker run --rm -v \$(pwd)/src/${svc}:/work python:3.11.15-slim \\
+    sh -c 'pip install -q pip-tools >/dev/null 2>&1 && pip-compile --no-header \\
+           --strip-extras -o /tmp/fresh.lock.txt /work/requirements.txt >/dev/null 2>&1 && \\
+           cp /tmp/fresh.lock.txt /work/requirements.lock.txt'"
+  fi
+  log "Lock file in sync: $svc"
+}
+
+if $BUILD_MCP; then
+  check_lockfile_sync "mcp_server" "$PROJECT_ROOT/src/mcp_server"
+fi
+if $BUILD_WORKER; then
+  check_lockfile_sync "worker" "$PROJECT_ROOT/src/worker"
+fi
+
+# ---------------------------------------------------------------------------
 # Build — output redirected to a temp log to avoid flooding the terminal.
 # On success: one summary line. On failure: last 40 lines of build log.
 # ---------------------------------------------------------------------------

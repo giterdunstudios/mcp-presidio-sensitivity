@@ -90,13 +90,15 @@ package in `requirements.txt`, regenerate the lock file:
 ```bash
 # For mcp_server:
 docker run --rm -v $(pwd)/src/mcp_server:/work python:3.11.15-slim \
-  sh -c 'pip install -q pip-tools && cd /work && pip-compile --no-header \
-         --strip-extras -o requirements.lock.txt requirements.txt'
+  sh -c 'pip install -q pip-tools >/dev/null 2>&1 && pip-compile --no-header \
+         --strip-extras -o /tmp/fresh.lock.txt /work/requirements.txt >/dev/null 2>&1 && \
+         cp /tmp/fresh.lock.txt /work/requirements.lock.txt'
 
 # For worker:
 docker run --rm -v $(pwd)/src/worker:/work python:3.11.15-slim \
-  sh -c 'pip install -q pip-tools && cd /work && pip-compile --no-header \
-         --strip-extras -o requirements.lock.txt requirements.txt'
+  sh -c 'pip install -q pip-tools >/dev/null 2>&1 && pip-compile --no-header \
+         --strip-extras -o /tmp/fresh.lock.txt /work/requirements.txt >/dev/null 2>&1 && \
+         cp /tmp/fresh.lock.txt /work/requirements.lock.txt'
 ```
 
 After regenerating, rebuild both images and run `./scripts/test.sh` to confirm
